@@ -28,6 +28,18 @@ irm https://raw.githubusercontent.com/TheRealJamesRussell/librarian-save-swapper
 
 The first run will create launcher folders and ask what to do if it finds existing active saves but no managed profile yet.
 
+For troubleshooting, run:
+
+```text
+librarian --log
+```
+
+This prints the log path and writes extra diagnostics to:
+
+```text
+%APPDATA%\librarian-save-swapper\logs\launcher.log
+```
+
 ## Where Files Go
 
 Installed launcher files:

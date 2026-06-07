@@ -1,5 +1,8 @@
 param(
-    [switch]$SkipMain
+    [switch]$SkipMain,
+    [switch]$Log,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$RemainingArgs
 )
 
 Set-StrictMode -Version 3.0
@@ -16,6 +19,8 @@ $BackupsRoot = Join-Path $AppRoot "backups"
 $ArchivesRoot = Join-Path $AppRoot "archives"
 $LogsRoot = Join-Path $AppRoot "logs"
 $ConfigPath = Join-Path $AppRoot "config.json"
+$LogPath = Join-Path $LogsRoot "launcher.log"
+$VerboseLog = $Log -or ($RemainingArgs -contains "--log")
 
 function Write-Info {
     param([string]$Message)
@@ -31,7 +36,14 @@ function Write-Log {
     param([string]$Message)
     New-Item -ItemType Directory -Path $LogsRoot -Force | Out-Null
     $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Add-Content -LiteralPath (Join-Path $LogsRoot "launcher.log") -Value "[$stamp] $Message"
+    Add-Content -LiteralPath $LogPath -Value "[$stamp] $Message"
+}
+
+function Write-DebugLog {
+    param([string]$Message)
+    if ($VerboseLog) {
+        Write-Log "DEBUG: $Message"
+    }
 }
 
 function Expand-LauncherPath {
@@ -71,9 +83,11 @@ function Load-Config {
     if (-not (Test-Path -LiteralPath $ConfigPath)) {
         $config = Get-DefaultConfig
         Save-Config $config
+        Write-DebugLog "Created default config at '$ConfigPath'."
         return [pscustomobject]$config
     }
 
+    Write-DebugLog "Loading config from '$ConfigPath'."
     $loaded = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
     $defaults = Get-DefaultConfig
     foreach ($key in $defaults.Keys) {
@@ -300,6 +314,7 @@ function Save-ActiveToProfile {
 
     $profilePath = Join-Path $ProfilesRoot $ProfileName
     $activeSaveFile = Join-Path $SavePath $GameplaySaveFileName
+    Write-DebugLog "Saving active save '$activeSaveFile' into profile '$ProfileName'."
     if (-not (Test-Path -LiteralPath $activeSaveFile)) {
         throw "Could not find gameplay save file: $activeSaveFile"
     }
@@ -308,6 +323,7 @@ function Save-ActiveToProfile {
     if (-not [string]::IsNullOrWhiteSpace($latestProfileSaveFile)) {
         $activeHash = Get-SaveHash -Path $activeSaveFile
         $profileHash = Get-SaveHash -Path $latestProfileSaveFile
+        Write-DebugLog "Active hash '$activeHash'; latest profile hash '$profileHash'."
         if ($activeHash -eq $profileHash) {
             Write-Log "Skipped saving profile '$ProfileName' because active $GameplaySaveFileName is unchanged."
             return
@@ -318,6 +334,7 @@ function Save-ActiveToProfile {
     $versionPath = New-UniqueChildDirectory -Parent $profilePath -BaseName (New-VersionName)
     Copy-Item -LiteralPath $activeSaveFile -Destination (Join-Path $versionPath $GameplaySaveFileName) -Force
     Remove-OldProfileVersions -ProfilePath $profilePath
+    Write-DebugLog "Created profile version '$versionPath'."
     Write-Log "Saved active gameplay save to profile '$ProfileName' version '$versionPath'."
 }
 
@@ -341,6 +358,7 @@ function Load-ProfileToActive {
         throw "Profile '$ProfileName' does not contain $GameplaySaveFileName."
     }
 
+    Write-DebugLog "Loading latest profile save '$profileSaveFile' into '$SavePath'."
     New-Item -ItemType Directory -Path $SavePath -Force | Out-Null
     Copy-Item -LiteralPath $profileSaveFile -Destination (Join-Path $SavePath $GameplaySaveFileName) -Force
     Write-Log "Loaded profile '$ProfileName' gameplay save into active save folder."
@@ -375,6 +393,7 @@ function Resolve-SavePath {
     param([object]$Config)
 
     $savePath = Get-FullPath $Config.savePath
+    Write-DebugLog "Resolved save path '$savePath'."
     if (-not (Test-SafeSavePath $savePath)) {
         throw "Configured save path is not the expected Librarian\Saved\SaveGames folder: $savePath"
     }
@@ -458,26 +477,31 @@ function Resolve-ActiveSaveMismatch {
     )
 
     if ([string]::IsNullOrWhiteSpace($Config.lastActiveProfile)) {
+        Write-DebugLog "No last active profile configured; skipping active save mismatch check."
         return
     }
 
     $activeSaveFile = Join-Path $SavePath $GameplaySaveFileName
     if (-not (Test-Path -LiteralPath $activeSaveFile)) {
+        Write-DebugLog "Active save file missing; skipping mismatch check: '$activeSaveFile'."
         return
     }
 
     $lastProfilePath = Join-Path $ProfilesRoot $Config.lastActiveProfile
     if (-not (Test-Path -LiteralPath $lastProfilePath)) {
+        Write-DebugLog "Last active profile path missing; skipping mismatch check: '$lastProfilePath'."
         return
     }
 
     $latestProfileSaveFile = Get-LatestProfileSaveFile -ProfilePath $lastProfilePath
     if ([string]::IsNullOrWhiteSpace($latestProfileSaveFile)) {
+        Write-DebugLog "Last active profile has no save file; skipping mismatch check."
         return
     }
 
     $activeHash = Get-SaveHash -Path $activeSaveFile
     $profileHash = Get-SaveHash -Path $latestProfileSaveFile
+    Write-DebugLog "Mismatch check active hash '$activeHash'; profile '$($Config.lastActiveProfile)' hash '$profileHash'."
     if ($activeHash -eq $profileHash) {
         return
     }
@@ -498,6 +522,7 @@ function Resolve-ActiveSaveMismatch {
         $choice = Read-Host "Choose"
         switch -Regex ($choice) {
             "^[Uu]$" {
+                Write-DebugLog "User chose to update last active profile after hash mismatch."
                 Backup-Directory -Source $SavePath -Reason "before-active-mismatch-update" | Out-Null
                 Save-ActiveToProfile -SavePath $SavePath -ProfileName $Config.lastActiveProfile
                 Save-Config $Config
@@ -505,10 +530,12 @@ function Resolve-ActiveSaveMismatch {
                 return
             }
             "^[Nn]$" {
+                Write-DebugLog "User chose to create a new profile after hash mismatch."
                 New-ProfileFromCurrentSave -Config $Config -SavePath $SavePath
                 return
             }
             "^[Qq]$" {
+                Write-DebugLog "User quit after hash mismatch prompt."
                 Write-Info "No profile was changed."
                 exit 0
             }
@@ -678,6 +705,7 @@ function Start-SelectedProfile {
     }
 
     Write-Info "Backing up current save..."
+    Write-DebugLog "Starting profile '$ProfileName' with game exe '$GameExe' and save path '$SavePath'."
     Backup-Directory -Source $SavePath -Reason "before-switch" | Out-Null
 
     if (-not [string]::IsNullOrWhiteSpace($Config.lastActiveProfile)) {
@@ -695,11 +723,13 @@ function Start-SelectedProfile {
 
     Write-Info "Launching Librarian..."
     $process = Start-Process -FilePath $GameExe -PassThru
+    Write-DebugLog "Started game process id '$($process.Id)'."
     Write-Log "Launched game process '$($process.Id)' with profile '$ProfileName'."
 
     if ($Config.waitForGameExit) {
         Write-Info "Waiting for game to close..."
         $process.WaitForExit()
+        Write-DebugLog "Game process '$($process.Id)' exited with code '$($process.ExitCode)'."
         Write-Info "Game closed. Saving updated progress to $ProfileName..."
         Save-ActiveToProfile -SavePath $SavePath -ProfileName $ProfileName
         Save-Config $Config
@@ -769,11 +799,26 @@ function Show-Menu {
 if (-not $SkipMain) {
     try {
         Ensure-Directories
+        Write-Log "Launcher started."
+        if ($VerboseLog) {
+            Write-Info "Troubleshooting log enabled:"
+            Write-Host $LogPath
+            Write-DebugLog "Raw arguments: $($RemainingArgs -join ' ')"
+            Write-DebugLog "App root '$AppRoot'."
+            Write-DebugLog "Profiles root '$ProfilesRoot'."
+            Write-DebugLog "Backups root '$BackupsRoot'."
+            Write-DebugLog "Archives root '$ArchivesRoot'."
+            Write-DebugLog "Config path '$ConfigPath'."
+        }
+
         $config = Load-Config
         $savePath = Resolve-SavePath -Config $config
         Initialize-FirstProfile -Config $config -SavePath $savePath
         Resolve-ActiveSaveMismatch -Config $config -SavePath $savePath
         $gameExe = Resolve-GameExe -Config $config
+        Write-DebugLog "Resolved game executable '$gameExe'."
+        Write-DebugLog "Last active profile '$($config.lastActiveProfile)'."
+        Write-DebugLog "waitForGameExit '$($config.waitForGameExit)'; backupBeforeSwitch '$($config.backupBeforeSwitch)'."
 
         Write-Warn "Steam Cloud warning: for safest profile switching, disable Steam Cloud for this game in Steam if it is available."
         if (Test-SteamRunning) {
@@ -785,6 +830,11 @@ if (-not $SkipMain) {
         Write-Host ""
         Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
         Write-Log "Error: $($_.Exception.Message)"
+        if ($VerboseLog) {
+            Write-Log "Error details: $($_ | Out-String)"
+            Write-Info "Troubleshooting log:"
+            Write-Host $LogPath
+        }
         exit 1
     }
 }
