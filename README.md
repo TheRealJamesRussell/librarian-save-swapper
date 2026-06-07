@@ -23,7 +23,7 @@ irm https://raw.githubusercontent.com/TheRealJamesRussell/librarian-save-swapper
 ## Use
 
 1. Press `Win + R`.
-2. Type `librarygame`.
+2. Type `librarian`.
 3. Pick a profile number, or choose an action from the menu.
 
 The first run will create launcher folders and ask what to do if it finds existing active saves but no managed profile yet.
@@ -91,7 +91,7 @@ This launcher does not automatically edit Steam Cloud settings.
 
 ## Recover From A Backup
 
-Run `librarygame`, choose `R`, and select a backup to restore. The launcher creates another backup before restoring.
+Run `librarian`, choose `R`, and select a backup to restore. The launcher creates another backup before restoring.
 
 You can also manually inspect backups here:
 
@@ -105,7 +105,7 @@ You can also manually inspect backups here:
 powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\librarian-save-swapper\uninstall.ps1"
 ```
 
-The uninstaller removes the `librarygame` command and installed launcher files. It keeps profiles and backups by default.
+The uninstaller removes the `librarian` command and installed launcher files. It keeps profiles and backups by default.
 
 ## Known Limitations
 

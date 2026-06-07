@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 
 $InstallDir = Join-Path $env:LOCALAPPDATA "Programs\librarian-save-swapper"
 $AppDataDir = Join-Path $env:APPDATA "librarian-save-swapper"
-$AppPathsKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\librarygame.exe"
+$AppPathsKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\librarian.exe"
 
 if (Test-Path -LiteralPath $AppPathsKey) {
     Remove-Item -LiteralPath $AppPathsKey -Recurse -Force
