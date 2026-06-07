@@ -35,6 +35,8 @@ A packaged release is not available yet. Use the PowerShell install command abov
 
 The first run will create launcher folders and ask what to do if it finds existing active saves but no managed profile yet.
 
+The launcher starts the game through Steam by default using Steam App ID `4197610`, so Steam playtime and Steam overlay behavior should work normally.
+
 Main actions:
 
 - `N` creates a new profile from the current active save.

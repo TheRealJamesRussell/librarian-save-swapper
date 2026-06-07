@@ -54,6 +54,8 @@ $configPath = Join-Path $AppDataDir "config.json"
 if (-not (Test-Path -LiteralPath $configPath)) {
     $defaultConfig = [ordered]@{
         version = 1
+        launchMode = "steam"
+        steamAppId = "4197610"
         gameExePath = "C:\Program Files (x86)\Steam\steamapps\common\Librarian Tidy Up the Arcane Library!\Librarian.exe"
         savePath = "%LOCALAPPDATA%\Librarian\Saved\SaveGames"
         lastActiveProfile = $null

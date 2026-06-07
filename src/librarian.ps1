@@ -11,6 +11,8 @@ $ErrorActionPreference = "Stop"
 $LauncherName = "librarian-save-swapper"
 $DefaultGameExePath = "C:\Program Files (x86)\Steam\steamapps\common\Librarian Tidy Up the Arcane Library!\Librarian.exe"
 $DefaultSavePath = "%LOCALAPPDATA%\Librarian\Saved\SaveGames"
+$DefaultSteamAppId = "4197610"
+$GameProcessName = "Librarian"
 $GameplaySaveFileName = "Sav.sav"
 $ProfileVersionRetention = 5
 $BackupRetention = 5
@@ -65,6 +67,8 @@ function Ensure-Directories {
 function Get-DefaultConfig {
     [ordered]@{
         version = 1
+        launchMode = "steam"
+        steamAppId = $DefaultSteamAppId
         gameExePath = $DefaultGameExePath
         savePath = $DefaultSavePath
         lastActiveProfile = $null
@@ -114,7 +118,7 @@ function Get-Profiles {
 }
 
 function Test-GameRunning {
-    return $null -ne (Get-Process -Name "Librarian" -ErrorAction SilentlyContinue)
+    return $null -ne (Get-Process -Name $GameProcessName -ErrorAction SilentlyContinue)
 }
 
 function Test-SteamRunning {
@@ -416,6 +420,78 @@ function Resolve-GameExe {
     $Config.gameExePath = $enteredPath
     Save-Config $Config
     return $enteredPath
+}
+
+function Resolve-LaunchSettings {
+    param([object]$Config)
+
+    if ([string]::IsNullOrWhiteSpace($Config.launchMode)) {
+        $Config.launchMode = "steam"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Config.steamAppId)) {
+        $Config.steamAppId = $DefaultSteamAppId
+    }
+
+    if ($Config.launchMode -eq "direct") {
+        Resolve-GameExe -Config $Config | Out-Null
+    }
+
+    Save-Config $Config
+}
+
+function Start-GameAndWait {
+    param([object]$Config)
+
+    if ($Config.launchMode -eq "direct") {
+        $gameExe = Resolve-GameExe -Config $Config
+        Write-Info "Launching Librarian..."
+        $process = Start-Process -FilePath $gameExe -PassThru
+        Write-DebugLog "Started direct game process id '$($process.Id)'."
+        Write-Log "Launched game process '$($process.Id)' directly."
+
+        if ($Config.waitForGameExit) {
+            Write-Info "Waiting for game to close..."
+            $process.WaitForExit()
+            Write-DebugLog "Game process '$($process.Id)' exited with code '$($process.ExitCode)'."
+        }
+        return $true
+    }
+
+    $steamUrl = "steam://rungameid/$($Config.steamAppId)"
+    Write-Info "Launching Librarian through Steam..."
+    Write-DebugLog "Launching Steam URL '$steamUrl'."
+    Start-Process $steamUrl | Out-Null
+    Write-Log "Requested Steam launch for app id '$($Config.steamAppId)'."
+
+    if (-not $Config.waitForGameExit) {
+        return $true
+    }
+
+    Write-Info "Waiting for game process to start..."
+    $process = $null
+    $deadline = (Get-Date).AddMinutes(3)
+    while ((Get-Date) -lt $deadline) {
+        $process = Get-Process -Name $GameProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($null -ne $process) {
+            break
+        }
+        Start-Sleep -Seconds 1
+    }
+
+    if ($null -eq $process) {
+        Write-Warn "Steam launch was requested, but $GameProcessName did not start within 3 minutes."
+        Write-Warn "If Steam is updating or waiting for input, run librarian again after the game closes so the active save can be captured."
+        Write-Log "Timed out waiting for '$GameProcessName' after Steam launch."
+        return $false
+    }
+
+    Write-DebugLog "Detected Steam-launched game process id '$($process.Id)'."
+    Write-Log "Detected Steam-launched game process '$($process.Id)'."
+    Write-Info "Waiting for game to close..."
+    $process.WaitForExit()
+    Write-DebugLog "Steam-launched game process '$($process.Id)' exited."
+    return $true
 }
 
 function Resolve-SavePath {
@@ -777,7 +853,6 @@ function Start-SelectedProfile {
     param(
         [object]$Config,
         [string]$SavePath,
-        [string]$GameExe,
         [string]$ProfileName
     )
 
@@ -787,7 +862,7 @@ function Start-SelectedProfile {
     }
 
     Write-Info "Backing up current save..."
-    Write-DebugLog "Starting profile '$ProfileName' with game exe '$GameExe' and save path '$SavePath'."
+    Write-DebugLog "Starting profile '$ProfileName' with launch mode '$($Config.launchMode)' and save path '$SavePath'."
     Backup-Directory -Source $SavePath -Reason "before-switch" | Out-Null
 
     if (-not [string]::IsNullOrWhiteSpace($Config.lastActiveProfile)) {
@@ -803,15 +878,8 @@ function Start-SelectedProfile {
     $Config.lastActiveProfile = $ProfileName
     Save-Config $Config
 
-    Write-Info "Launching Librarian..."
-    $process = Start-Process -FilePath $GameExe -PassThru
-    Write-DebugLog "Started game process id '$($process.Id)'."
-    Write-Log "Launched game process '$($process.Id)' with profile '$ProfileName'."
-
-    if ($Config.waitForGameExit) {
-        Write-Info "Waiting for game to close..."
-        $process.WaitForExit()
-        Write-DebugLog "Game process '$($process.Id)' exited with code '$($process.ExitCode)'."
+    $gameClosed = Start-GameAndWait -Config $Config
+    if ($Config.waitForGameExit -and $gameClosed) {
         Write-Info "Game closed. Saving updated progress to $ProfileName..."
         Save-ActiveToProfile -SavePath $SavePath -ProfileName $ProfileName
         Save-Config $Config
@@ -822,8 +890,7 @@ function Start-SelectedProfile {
 function Start-NewPlaythrough {
     param(
         [object]$Config,
-        [string]$SavePath,
-        [string]$GameExe
+        [string]$SavePath
     )
 
     if (Test-GameRunning) {
@@ -861,15 +928,8 @@ function Start-NewPlaythrough {
     $Config.lastActiveProfile = $profileName
     Save-Config $Config
 
-    Write-Info "Launching Librarian for new playthrough..."
-    $process = Start-Process -FilePath $GameExe -PassThru
-    Write-DebugLog "Started game process id '$($process.Id)' for new playthrough."
-    Write-Log "Launched game process '$($process.Id)' for new playthrough '$profileName'."
-
-    if ($Config.waitForGameExit) {
-        Write-Info "Waiting for game to close..."
-        $process.WaitForExit()
-        Write-DebugLog "Game process '$($process.Id)' exited with code '$($process.ExitCode)'."
+    $gameClosed = Start-GameAndWait -Config $Config
+    if ($Config.waitForGameExit -and $gameClosed) {
         if (Test-Path -LiteralPath $activeSaveFile) {
             Write-Info "Game closed. Saving new playthrough to $profileName..."
             Save-ActiveToProfile -SavePath $SavePath -ProfileName $profileName
@@ -886,8 +946,7 @@ function Start-NewPlaythrough {
 function Show-Menu {
     param(
         [object]$Config,
-        [string]$SavePath,
-        [string]$GameExe
+        [string]$SavePath
     )
 
     while ($true) {
@@ -920,7 +979,7 @@ function Show-Menu {
         switch -Regex ($choice) {
             "^[Qq]$" { return }
             "^[Nn]$" { New-ProfileFromCurrentSave -Config $Config -SavePath $SavePath; Pause; continue }
-            "^[Ss]$" { Start-NewPlaythrough -Config $Config -SavePath $SavePath -GameExe $GameExe; Pause; continue }
+            "^[Ss]$" { Start-NewPlaythrough -Config $Config -SavePath $SavePath; Pause; continue }
             "^[Ee]$" { Rename-Profile -Config $Config; Pause; continue }
             "^[Dd]$" { Delete-Profile -Config $Config; Pause; continue }
             "^[Bb]$" { Backup-CurrentSave -Config $Config -SavePath $SavePath; Pause; continue }
@@ -928,7 +987,7 @@ function Show-Menu {
             "^\d+$" {
                 $index = [int]$choice - 1
                 if ($index -ge 0 -and $index -lt $profiles.Count) {
-                    Start-SelectedProfile -Config $Config -SavePath $SavePath -GameExe $GameExe -ProfileName $profiles[$index].Name
+                    Start-SelectedProfile -Config $Config -SavePath $SavePath -ProfileName $profiles[$index].Name
                     Pause
                     continue
                 }
@@ -962,8 +1021,8 @@ if (-not $SkipMain) {
         $savePath = Resolve-SavePath -Config $config
         Initialize-FirstProfile -Config $config -SavePath $savePath
         Resolve-ActiveSaveMismatch -Config $config -SavePath $savePath
-        $gameExe = Resolve-GameExe -Config $config
-        Write-DebugLog "Resolved game executable '$gameExe'."
+        Resolve-LaunchSettings -Config $config
+        Write-DebugLog "Launch mode '$($config.launchMode)'; Steam app id '$($config.steamAppId)'."
         Write-DebugLog "Last active profile '$($config.lastActiveProfile)'."
         Write-DebugLog "waitForGameExit '$($config.waitForGameExit)'; backupBeforeSwitch '$($config.backupBeforeSwitch)'."
 
@@ -972,7 +1031,7 @@ if (-not $SkipMain) {
             Write-Warn "Steam appears to be running. If Steam Cloud is enabled, it may sync or restore save files."
         }
         Start-Sleep -Milliseconds 800
-        Show-Menu -Config $config -SavePath $savePath -GameExe $gameExe
+        Show-Menu -Config $config -SavePath $savePath
     } catch {
         Write-Host ""
         Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
