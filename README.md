@@ -16,6 +16,10 @@ As of June 2026, the game does not support multiple saves. It uses one active sa
 
 - Windows 10 or Windows 11. See [OS Support](#os-support).
 
+- Steam installed.
+
+- `Librarian: Tidy Up the Arcane Library!` installed through Steam.
+
 - Steam Cloud disabled for this game. See [Steam Cloud Warning](#steam-cloud-warning).
 
 ## Install

@@ -1427,11 +1427,6 @@ if (-not $SkipMain) {
         Write-DebugLog "Last active profile '$($config.lastActiveProfile)'."
         Write-DebugLog "waitForGameExit '$($config.waitForGameExit)'; backupBeforeSwitch '$($config.backupBeforeSwitch)'."
 
-        Write-Warn "Steam Cloud warning: for safest profile switching, disable Steam Cloud for this game in Steam if it is available."
-        if (Test-SteamRunning) {
-            Write-Warn "Steam appears to be running. If Steam Cloud is enabled, it may sync or restore save files."
-        }
-        Start-Sleep -Milliseconds 800
         Show-Menu -Config $config -SavePath $savePath
     } catch {
         Write-Host ""
