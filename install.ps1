@@ -74,9 +74,24 @@ if (($userPath -split ";") -notcontains $InstallDir) {
 }
 
 Write-Host ""
-Write-Host "librarian-save-swapper installed." -ForegroundColor Green
-Write-Host "Run it with Win + R, then type: librarian"
-Write-Host "Installed to: $InstallDir"
-Write-Host "Profiles and backups live in: $AppDataDir"
-Write-Host "Uninstall with: powershell -NoProfile -ExecutionPolicy Bypass -File `"$InstallDir\uninstall.ps1`""
+Write-Host "librarian-save-swapper installed" -ForegroundColor Green
+Write-Host ""
+
+Write-Host "Run" -ForegroundColor Cyan
+Write-Host "  Win + R" -ForegroundColor White
+Write-Host "  librarian" -ForegroundColor Yellow
+Write-Host ""
+
+Write-Host "Installed files" -ForegroundColor Cyan
+Write-Host "  $InstallDir" -ForegroundColor White
+Write-Host ""
+
+Write-Host "Profiles, backups, config, and logs" -ForegroundColor Cyan
+Write-Host "  $AppDataDir" -ForegroundColor White
+Write-Host ""
+
+Write-Host "Uninstall" -ForegroundColor Cyan
+Write-Host "  Run this script:" -ForegroundColor DarkGray
+Write-Host "  $InstallDir\uninstall.ps1" -ForegroundColor Yellow
+Write-Host ""
 
