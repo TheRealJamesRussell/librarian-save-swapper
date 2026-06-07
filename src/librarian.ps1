@@ -1220,13 +1220,17 @@ function Start-SelectedProfile {
     Save-Config $Config
 
     $gameClosed = Start-GameAndWait -Config $Config
+    if ($Config.waitForGameExit -and -not $gameClosed) {
+        return $true
+    }
+
     if ($Config.waitForGameExit -and $gameClosed) {
         Write-Info "Game closed. Saving updated progress to $ProfileName..."
         Save-ActiveToProfile -SavePath $SavePath -ProfileName $ProfileName
         Save-Config $Config
         Write-Info "Done."
     }
-    return $true
+    return $false
 }
 
 function Start-NewPlaythrough {
@@ -1274,6 +1278,10 @@ function Start-NewPlaythrough {
     Save-Config $Config
 
     $gameClosed = Start-GameAndWait -Config $Config
+    if ($Config.waitForGameExit -and -not $gameClosed) {
+        return $true
+    }
+
     if ($Config.waitForGameExit -and $gameClosed) {
         if (Test-Path -LiteralPath $activeSaveFile) {
             Write-Info "Game closed. Saving new playthrough to $profileName..."
@@ -1284,9 +1292,10 @@ function Start-NewPlaythrough {
             Write-Warn "Game closed, but no $GameplaySaveFileName was found."
             Write-Warn "Launch the game and create a save before using this profile."
             Write-Log "No $GameplaySaveFileName found after new playthrough '$profileName' exited."
+            return $true
         }
     }
-    return $true
+    return $false
 }
 
 function Show-Header {
