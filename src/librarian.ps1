@@ -23,20 +23,83 @@ $LogsRoot = Join-Path $AppRoot "logs"
 $ConfigPath = Join-Path $AppRoot "config.json"
 $LogPath = Join-Path $LogsRoot "launcher.log"
 $VerboseLog = $Log -or ($RemainingArgs -contains "--log")
+$UiInset = 2
+$UiRightPadding = 2
 
 function Write-Info {
     param([string]$Message)
-    Write-Host $Message -ForegroundColor Cyan
+    Write-UiLine $Message "Cyan"
 }
 
 function Write-Warn {
     param([string]$Message)
-    Write-Host $Message -ForegroundColor Yellow
+    Write-UiLine $Message "Yellow"
 }
 
 function Write-Muted {
     param([string]$Message)
-    Write-Host $Message -ForegroundColor DarkGray
+    Write-UiLine $Message "DarkGray"
+}
+
+function Get-UiContentWidth {
+    try {
+        return [Math]::Max(20, [Console]::WindowWidth - $UiInset - $UiRightPadding)
+    } catch {
+        return 61
+    }
+}
+
+function Write-UiLine {
+    param(
+        [string]$Message = "",
+        [string]$ForegroundColor = "White"
+    )
+
+    if ([string]::IsNullOrEmpty($Message)) {
+        Write-Host ""
+        return
+    }
+
+    $maxWidth = Get-UiContentWidth
+    foreach ($rawLine in ($Message -split "`r?`n")) {
+        if ([string]::IsNullOrWhiteSpace($rawLine)) {
+            Write-Host ""
+            continue
+        }
+
+        $line = ""
+        foreach ($word in ($rawLine -split "\s+")) {
+            if ([string]::IsNullOrEmpty($word)) {
+                continue
+            }
+
+            while ($word.Length -gt $maxWidth) {
+                if (-not [string]::IsNullOrEmpty($line)) {
+                    Write-Host (" " * $UiInset) -NoNewline
+                    Write-Host $line -ForegroundColor $ForegroundColor
+                    $line = ""
+                }
+
+                Write-Host (" " * $UiInset) -NoNewline
+                Write-Host $word.Substring(0, $maxWidth) -ForegroundColor $ForegroundColor
+                $word = $word.Substring($maxWidth)
+            }
+
+            $candidate = if ([string]::IsNullOrEmpty($line)) { $word } else { "$line $word" }
+            if ($candidate.Length -gt $maxWidth) {
+                Write-Host (" " * $UiInset) -NoNewline
+                Write-Host $line -ForegroundColor $ForegroundColor
+                $line = $word
+            } else {
+                $line = $candidate
+            }
+        }
+
+        if (-not [string]::IsNullOrEmpty($line)) {
+            Write-Host (" " * $UiInset) -NoNewline
+            Write-Host $line -ForegroundColor $ForegroundColor
+        }
+    }
 }
 
 function Write-Log {
@@ -176,13 +239,14 @@ function Read-InteractiveChoice {
         $item = $Items[$Index]
         $label = & $RenderItem $item $Index
         $isDisabled = $item.PSObject.Properties.Name.Contains("Disabled") -and $item.Disabled
-        $availableWidth = [Math]::Max(20, [Console]::WindowWidth - 1)
+        $availableWidth = Get-UiContentWidth
         $text = if ($IsSelected) { " > {0}" -f $label } else { "   {0}" -f $label }
         if ($text.Length -gt $availableWidth) {
             $text = $text.Substring(0, $availableWidth)
         }
         $text = $text.PadRight($availableWidth)
 
+        Write-Host (" " * $UiInset) -NoNewline
         if ($IsSelected) {
             Write-Host $text -ForegroundColor Black -BackgroundColor Cyan
         } elseif ($isDisabled) {
@@ -210,8 +274,8 @@ function Read-InteractiveChoice {
         & $RenderHeader
         Write-Host ""
     }
-    Write-Host $Title -ForegroundColor Cyan
-    Write-Muted $HelpText
+    Write-UiLine $Title "Cyan"
+    Write-UiLine $HelpText "DarkGray"
     Write-Host ""
     $itemsTop = [Console]::CursorTop
     for ($i = 0; $i -lt $Items.Count; $i++) {
@@ -535,7 +599,7 @@ function Format-PlayProfileLabel {
 
     $prefix = "Play profile: "
     $longestDateSuffix = " <30 September, 2026 23:59>"
-    $maxSelectableLabelLength = 61
+    $maxSelectableLabelLength = 58
     $maxNameLength = $maxSelectableLabelLength - $prefix.Length - $longestDateSuffix.Length
     $profileName = Limit-DisplayText -Text $Profile.Name -MaxLength $maxNameLength
 
@@ -648,7 +712,7 @@ function Resolve-GameExe {
     }
 
     Write-Warn "Could not find the game executable at:"
-    Write-Host $gameExe
+    Write-Muted $gameExe
     $entered = Read-RequiredValue "Paste the full path to Librarian.exe, or type Q to quit"
     if ($entered -eq "Q") {
         exit 0
@@ -722,8 +786,8 @@ function Start-GameAndWait {
     }
 
     if ($null -eq $process) {
-        Write-Warn "Steam launch was requested, but $GameProcessName did not start within 3 minutes."
-        Write-Warn "If Steam is updating or waiting for input, run librarian again after the game closes so the active save can be captured."
+        Write-Warn "Steam launch requested, but $GameProcessName did not start."
+        Write-Muted "If Steam is updating, close the game later and run librarian again."
         Write-Log "Timed out waiting for '$GameProcessName' after Steam launch."
         return $false
     }
@@ -784,8 +848,8 @@ function Initialize-FirstProfile {
             -Title "Existing active save found" `
             -Items $choices `
             -RenderHeader {
-                Write-Warn "Found existing active save files, but no managed profiles yet."
-                Write-Muted "Create a managed profile from the current save, or continue to the main menu."
+                Write-Warn "No managed profiles yet."
+                Write-Muted "Create a profile from the current save, or continue."
             } `
             -RenderItem { param($item, $index) $item.Label } `
             -AllowCancel
@@ -892,13 +956,14 @@ function Resolve-ActiveSaveMismatch {
         return
     }
 
-    Write-Host ""
-    Write-Warn "The active game save differs from the last active profile: $($Config.lastActiveProfile)"
-    Write-Host "This usually means the game was played outside this launcher."
+    Write-UiLine
+    Write-Warn "Active save differs from the last profile."
+    Write-Muted "Last profile: $($Config.lastActiveProfile)"
+    Write-Muted "This can happen after playing outside the launcher."
 
     $choices = @(
-        [pscustomobject]@{ Mode = "update"; Label = "Update $($Config.lastActiveProfile) with the current active save" },
-        [pscustomobject]@{ Mode = "new"; Label = "Create a new profile from the current active save" },
+        [pscustomobject]@{ Mode = "update"; Label = "Update last profile with current save" },
+        [pscustomobject]@{ Mode = "new"; Label = "Create new profile from current save" },
         [pscustomobject]@{ Mode = "quit"; Label = "Quit without changing anything" }
     )
     $choice = Read-InteractiveChoice `
@@ -912,7 +977,7 @@ function Resolve-ActiveSaveMismatch {
             Backup-Directory -Source $SavePath -Reason "before-active-mismatch-update" | Out-Null
             Save-ActiveToProfile -SavePath $SavePath -ProfileName $Config.lastActiveProfile
             Save-Config $Config
-            Write-Info "Updated '$($Config.lastActiveProfile)' with the current active save."
+            Write-Info "Updated '$($Config.lastActiveProfile)'."
             return
         }
         "new" {
@@ -1041,7 +1106,7 @@ function Delete-Profile {
         -ConfirmLabel "Move '$($profile.Name)' to the Recycle Bin" `
         -RenderHeader {
             Write-Warn "This moves the profile to the Recycle Bin."
-            Write-Muted "You can restore it from there, or empty the Recycle Bin to remove it permanently."
+            Write-Muted "Restore it from the Recycle Bin, or empty it later."
         }
     if (-not $confirm) {
         return $false
@@ -1077,7 +1142,7 @@ function Restore-ProfileVersion {
     $selectedVersion = Read-InteractiveChoice `
         -Title "Restore profile version" `
         -Items $versions `
-        -RenderHeader { Write-Host "Profile: $($profile.Name)" -ForegroundColor Yellow } `
+        -RenderHeader { Write-UiLine "Profile: $($profile.Name)" "Yellow" } `
         -RenderItem { param($item, $index) $item.Name } `
         -AllowCancel
 
@@ -1115,7 +1180,7 @@ function Start-SelectedProfile {
     )
 
     if (Test-GameRunning) {
-        Write-Warn "The game appears to be running. Close it before switching save profiles."
+        Write-Warn "Game is running. Close it before switching profiles."
         return $false
     }
 
@@ -1153,7 +1218,7 @@ function Start-NewPlaythrough {
     )
 
     if (Test-GameRunning) {
-        Write-Warn "The game appears to be running. Close it before starting a new playthrough."
+        Write-Warn "Game is running. Close it before starting a new playthrough."
         return $false
     }
 
@@ -1164,7 +1229,7 @@ function Start-NewPlaythrough {
         -Title "Start new playthrough?" `
         -ConfirmLabel "Back up current save and start new playthrough" `
         -RenderHeader {
-            Write-Warn "This starts the game without an existing $GameplaySaveFileName."
+            Write-Warn "This starts without an existing $GameplaySaveFileName."
             Write-Muted "The current active save is backed up first."
         }
     if (-not $confirm) {
@@ -1368,9 +1433,9 @@ function Show-Menu {
             -HelpText "Use Up/Down, Enter to select, Esc to quit." `
             -RenderHeader {
                 if ([string]::IsNullOrWhiteSpace($Config.lastActiveProfile)) {
-                    Write-Host "Active profile: none" -ForegroundColor DarkGray
+                    Write-UiLine "Active profile: none" "DarkGray"
                 } else {
-                    Write-Host "Active profile: $($Config.lastActiveProfile)" -ForegroundColor Yellow
+                    Write-UiLine "Active profile: $($Config.lastActiveProfile)" "Yellow"
                 }
             } `
             -RenderItem {
@@ -1427,7 +1492,7 @@ if (-not $SkipMain) {
         Write-Log "Launcher started."
         if ($VerboseLog) {
             Write-Info "Troubleshooting log enabled:"
-            Write-Host $LogPath
+            Write-Muted $LogPath
             Write-DebugLog "Raw arguments: $($RemainingArgs -join ' ')"
             Write-DebugLog "App root '$AppRoot'."
             Write-DebugLog "Profiles root '$ProfilesRoot'."
@@ -1446,13 +1511,13 @@ if (-not $SkipMain) {
 
         Show-Menu -Config $config -SavePath $savePath
     } catch {
-        Write-Host ""
-        Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+        Write-UiLine
+        Write-UiLine "Error: $($_.Exception.Message)" "Red"
         Write-Log "Error: $($_.Exception.Message)"
         if ($VerboseLog) {
             Write-Log "Error details: $($_ | Out-String)"
             Write-Info "Troubleshooting log:"
-            Write-Host $LogPath
+            Write-Muted $LogPath
         }
         exit 1
     }

@@ -28,8 +28,10 @@ if (Test-Path -LiteralPath $AppDataDir) {
     Write-Host ""
     $answer = Read-Host "Delete managed profiles, backups, logs, and config too? Type DELETE to confirm"
     if ($answer -eq "DELETE") {
-        Remove-Item -LiteralPath $AppDataDir -Recurse -Force
+        Get-ChildItem -LiteralPath $AppDataDir -Force -ErrorAction SilentlyContinue |
+            Remove-Item -Recurse -Force
         Write-Host "Deleted launcher-managed data." -ForegroundColor Yellow
+        Write-Host "Left the empty data folder in place so Windows does not show a missing-location popup."
     } else {
         Write-Host "Kept launcher-managed data."
     }
