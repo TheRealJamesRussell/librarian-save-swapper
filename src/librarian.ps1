@@ -1188,16 +1188,34 @@ function Start-SelectedProfile {
     Write-DebugLog "Starting profile '$ProfileName' with launch mode '$($Config.launchMode)' and save path '$SavePath'."
     Backup-Directory -Source $SavePath -Reason "before-switch" | Out-Null
 
+    $activeSaveFile = Join-Path $SavePath $GameplaySaveFileName
     if (-not [string]::IsNullOrWhiteSpace($Config.lastActiveProfile)) {
         $lastProfilePath = Join-Path $ProfilesRoot $Config.lastActiveProfile
         if (Test-Path -LiteralPath $lastProfilePath) {
-            Write-Info "Saving current active state to $($Config.lastActiveProfile)..."
-            Save-ActiveToProfile -SavePath $SavePath -ProfileName $Config.lastActiveProfile
+            if (Test-Path -LiteralPath $activeSaveFile) {
+                Write-Info "Saving current active state to $($Config.lastActiveProfile)..."
+                Save-ActiveToProfile -SavePath $SavePath -ProfileName $Config.lastActiveProfile
+            } else {
+                Write-Muted "No active $GameplaySaveFileName to save for $($Config.lastActiveProfile)."
+                Write-DebugLog "Skipped saving outgoing profile '$($Config.lastActiveProfile)' because active save file is missing: '$activeSaveFile'."
+            }
         }
     }
 
-    Write-Info "Loading $ProfileName..."
-    Load-ProfileToActive -SavePath $SavePath -ProfileName $ProfileName
+    $profilePath = Join-Path $ProfilesRoot $ProfileName
+    $profileSaveFile = Get-LatestProfileSaveFile -ProfilePath $profilePath
+    if ([string]::IsNullOrWhiteSpace($profileSaveFile)) {
+        Write-Muted "Profile '$ProfileName' has no save yet."
+        Write-Muted "Starting with no active $GameplaySaveFileName."
+        New-Item -ItemType Directory -Path $SavePath -Force | Out-Null
+        if (Test-Path -LiteralPath $activeSaveFile) {
+            Remove-Item -LiteralPath $activeSaveFile -Force
+        }
+        Write-DebugLog "Skipped loading profile '$ProfileName' because it has no gameplay save yet."
+    } else {
+        Write-Info "Loading $ProfileName..."
+        Load-ProfileToActive -SavePath $SavePath -ProfileName $ProfileName
+    }
     $Config.lastActiveProfile = $ProfileName
     Save-Config $Config
 
