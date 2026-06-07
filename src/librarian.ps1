@@ -473,6 +473,80 @@ function Get-LatestProfileSaveFile {
     return $null
 }
 
+function Get-ProfileLastPlayed {
+    param([System.IO.DirectoryInfo]$Profile)
+
+    if ($null -eq $Profile) {
+        return $null
+    }
+
+    $versions = @(Get-ProfileVersionDirectories -ProfilePath $Profile.FullName)
+    if ($versions.Count -eq 0) {
+        return $null
+    }
+
+    $parsedDate = [datetime]::MinValue
+    if ([datetime]::TryParseExact(
+            $versions[0].Name,
+            "yyyy-MM-dd_HH-mm-ss",
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::None,
+            [ref]$parsedDate
+        )) {
+        return $parsedDate
+    }
+
+    return $versions[0].LastWriteTime
+}
+
+function Format-ProfileLastPlayed {
+    param([datetime]$LastPlayed)
+
+    if ($LastPlayed -eq [datetime]::MinValue) {
+        return ""
+    }
+
+    return "<{0}>" -f $LastPlayed.ToString("d MMMM, yyyy HH:mm", [System.Globalization.CultureInfo]::InvariantCulture)
+}
+
+function Limit-DisplayText {
+    param(
+        [string]$Text,
+        [int]$MaxLength
+    )
+
+    if ([string]::IsNullOrEmpty($Text) -or $Text.Length -le $MaxLength) {
+        return $Text
+    }
+
+    if ($MaxLength -le 3) {
+        return $Text.Substring(0, [Math]::Max(0, $MaxLength))
+    }
+
+    return "{0}..." -f $Text.Substring(0, $MaxLength - 3)
+}
+
+function Format-PlayProfileLabel {
+    param([System.IO.DirectoryInfo]$Profile)
+
+    if ($null -eq $Profile) {
+        return "Play profile: none"
+    }
+
+    $prefix = "Play profile: "
+    $longestDateSuffix = " <30 September, 2026 23:59>"
+    $maxSelectableLabelLength = 61
+    $maxNameLength = $maxSelectableLabelLength - $prefix.Length - $longestDateSuffix.Length
+    $profileName = Limit-DisplayText -Text $Profile.Name -MaxLength $maxNameLength
+
+    $lastPlayed = Get-ProfileLastPlayed -Profile $Profile
+    if ($null -eq $lastPlayed) {
+        return "$prefix$profileName"
+    }
+
+    return "$prefix$profileName $(Format-ProfileLastPlayed -LastPlayed $lastPlayed)"
+}
+
 function New-ProfileVersionFromSaveFile {
     param(
         [string]$SourceSaveFile,
@@ -1241,7 +1315,7 @@ function Show-Menu {
             $menuItems += [pscustomobject]@{
                 Kind = "profile"
                 Key = ""
-                Label = "Play profile: none"
+                Label = (Format-PlayProfileLabel -Profile $null)
                 Profile = $null
                 Disabled = $true
             }
@@ -1249,7 +1323,7 @@ function Show-Menu {
             $menuItems += [pscustomobject]@{
                 Kind = "profile"
                 Key = ""
-                Label = "Play profile: $($primaryProfile.Name)"
+                Label = (Format-PlayProfileLabel -Profile $primaryProfile)
                 Profile = $primaryProfile
                 Disabled = $false
             }
