@@ -167,28 +167,46 @@ function Read-InteractiveChoice {
         return $null
     }
 
+    function Write-ChoiceRow {
+        param(
+            [int]$Index,
+            [bool]$IsSelected
+        )
+
+        $label = & $RenderItem $Items[$Index] $Index
+        $availableWidth = [Math]::Max(20, [Console]::WindowWidth - 1)
+        $text = if ($IsSelected) { " > {0}" -f $label } else { "   {0}" -f $label }
+        if ($text.Length -gt $availableWidth) {
+            $text = $text.Substring(0, $availableWidth)
+        }
+        $text = $text.PadRight($availableWidth)
+
+        if ($IsSelected) {
+            Write-Host $text -ForegroundColor Black -BackgroundColor Cyan
+        } else {
+            Write-Host $text -ForegroundColor White
+        }
+    }
+
     $selected = 0
-    while ($true) {
-        Clear-Host
-        Show-Header
-        if ($null -ne $RenderHeader) {
-            & $RenderHeader
-            Write-Host ""
-        }
-        Write-Host $Title -ForegroundColor Cyan
-        Write-Muted $HelpText
+    [Console]::CursorVisible = $false
+    Clear-Host
+    Show-Header
+    if ($null -ne $RenderHeader) {
+        & $RenderHeader
         Write-Host ""
+    }
+    Write-Host $Title -ForegroundColor Cyan
+    Write-Muted $HelpText
+    Write-Host ""
+    $itemsTop = [Console]::CursorTop
+    for ($i = 0; $i -lt $Items.Count; $i++) {
+        Write-ChoiceRow -Index $i -IsSelected ($i -eq $selected)
+    }
 
-        for ($i = 0; $i -lt $Items.Count; $i++) {
-            $label = & $RenderItem $Items[$i] $i
-            if ($i -eq $selected) {
-                Write-Host (" > {0}" -f $label) -ForegroundColor Black -BackgroundColor Cyan
-            } else {
-                Write-Host ("   {0}" -f $label) -ForegroundColor White
-            }
-        }
-
+    while ($true) {
         $key = [Console]::ReadKey($true)
+        $previous = $selected
         switch ($key.Key) {
             "UpArrow" {
                 if ($selected -le 0) {
@@ -206,9 +224,13 @@ function Read-InteractiveChoice {
             }
             "Home" { $selected = 0 }
             "End" { $selected = $Items.Count - 1 }
-            "Enter" { return $Items[$selected] }
+            "Enter" {
+                [Console]::CursorVisible = $true
+                return $Items[$selected]
+            }
             "Escape" {
                 if ($AllowCancel) {
+                    [Console]::CursorVisible = $true
                     return $null
                 }
             }
@@ -218,6 +240,7 @@ function Read-InteractiveChoice {
                         $item = $Items[$i]
                         if ($item.PSObject.Properties.Name.Contains("Key") -and -not [string]::IsNullOrWhiteSpace($item.Key)) {
                             if ([string]::Equals([string]$key.KeyChar, [string]$item.Key, [System.StringComparison]::OrdinalIgnoreCase)) {
+                                [Console]::CursorVisible = $true
                                 return $item
                             }
                         }
@@ -229,11 +252,20 @@ function Read-InteractiveChoice {
                     if ($index -ge 0 -and $index -lt $Items.Count) {
                         $item = $Items[$index]
                         if (-not ($item.PSObject.Properties.Name.Contains("Kind") -and $item.Kind -eq "action")) {
+                            [Console]::CursorVisible = $true
                             return $item
                         }
                     }
                 }
             }
+        }
+
+        if ($previous -ne $selected) {
+            [Console]::SetCursorPosition(0, $itemsTop + $previous)
+            Write-ChoiceRow -Index $previous -IsSelected $false
+            [Console]::SetCursorPosition(0, $itemsTop + $selected)
+            Write-ChoiceRow -Index $selected -IsSelected $true
+            [Console]::SetCursorPosition(0, $itemsTop + $Items.Count)
         }
     }
 }
@@ -757,17 +789,37 @@ function Resolve-ActiveSaveMismatch {
     }
 }
 
-function Backup-CurrentSave {
+function Save-CurrentSave {
     param(
         [object]$Config,
         [string]$SavePath
     )
 
-    $profile = Choose-Profile -Prompt "Choose a profile to save the current active save into, or Q to cancel"
-    if ($null -eq $profile) {
+    $choices = @(
+        [pscustomobject]@{ Key = "N"; Label = "Create new profile from current save"; Mode = "new" },
+        [pscustomobject]@{ Key = "U"; Label = "Update existing profile with current save"; Mode = "update" },
+        [pscustomobject]@{ Key = "Q"; Label = "Cancel"; Mode = "cancel" }
+    )
+
+    $choice = Read-InteractiveChoice `
+        -Title "Capture current save" `
+        -Items $choices `
+        -RenderItem { param($item, $index) "[$($item.Key)] $($item.Label)" } `
+        -AllowCancel
+
+    if ($null -eq $choice -or $choice.Mode -eq "cancel") {
         return
     }
 
+    if ($choice.Mode -eq "new") {
+        New-ProfileFromCurrentSave -Config $Config -SavePath $SavePath
+        return
+    }
+
+    $profile = Choose-Profile -Prompt "Choose a profile to update, or Esc to cancel"
+    if ($null -eq $profile) {
+        return
+    }
     Backup-Directory -Source $SavePath -Reason "before-manual-profile-backup" | Out-Null
     Save-ActiveToProfile -SavePath $SavePath -ProfileName $profile.Name
     $Config.lastActiveProfile = $profile.Name
@@ -1034,11 +1086,10 @@ function Show-Menu {
             }
         }
 
-        $menuItems += [pscustomobject]@{ Kind = "action"; Key = "N"; Label = "New profile from current save"; Profile = $null }
+        $menuItems += [pscustomobject]@{ Kind = "action"; Key = "C"; Label = "Capture current save"; Profile = $null }
         $menuItems += [pscustomobject]@{ Kind = "action"; Key = "S"; Label = "Start new playthrough"; Profile = $null }
         $menuItems += [pscustomobject]@{ Kind = "action"; Key = "E"; Label = "Rename profile"; Profile = $null }
         $menuItems += [pscustomobject]@{ Kind = "action"; Key = "D"; Label = "Delete profile"; Profile = $null }
-        $menuItems += [pscustomobject]@{ Kind = "action"; Key = "B"; Label = "Save current save to profile"; Profile = $null }
         $menuItems += [pscustomobject]@{ Kind = "action"; Key = "R"; Label = "Restore profile version"; Profile = $null }
         $menuItems += [pscustomobject]@{ Kind = "action"; Key = "Q"; Label = "Quit"; Profile = $null }
 
@@ -1070,11 +1121,10 @@ function Show-Menu {
 
         switch ($selected.Key) {
             "Q" { return }
-            "N" { New-ProfileFromCurrentSave -Config $Config -SavePath $SavePath; Pause; continue }
+            "C" { Save-CurrentSave -Config $Config -SavePath $SavePath; Pause; continue }
             "S" { Start-NewPlaythrough -Config $Config -SavePath $SavePath; Pause; continue }
             "E" { Rename-Profile -Config $Config; Pause; continue }
             "D" { Delete-Profile -Config $Config; Pause; continue }
-            "B" { Backup-CurrentSave -Config $Config -SavePath $SavePath; Pause; continue }
             "R" { Restore-ProfileVersion -Config $Config -SavePath $SavePath; Pause; continue }
             default {
                 Write-Warn "Invalid choice."

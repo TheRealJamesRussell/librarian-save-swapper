@@ -35,15 +35,14 @@ A packaged release is not available yet. Use the PowerShell install command abov
 
 The first run will create launcher folders and ask what to do if it finds existing active saves but no managed profile yet.
 
-Menus support arrow-key navigation. Use `Up` and `Down` to highlight an option, then press `Enter`. Shortcut keys like `N`, `S`, `B`, `R`, and `Q` also work from the main menu.
+Menus support arrow-key navigation. Use `Up` and `Down` to highlight an option, then press `Enter`. Shortcut keys like `C`, `S`, `R`, and `Q` also work from the main menu.
 
 The launcher starts the game through Steam by default using Steam App ID `4197610`, so Steam playtime and Steam overlay behavior should work normally.
 
 Main actions:
 
-- `N` creates a new profile from the current active save.
+- `C` captures the current active save, either into a new profile or an existing profile.
 - `S` starts a brand-new playthrough by backing up the current save, removing only active `Sav.sav`, launching the game, and saving the new `Sav.sav` into a new profile after the game exits.
-- `B` saves the current active `Sav.sav` into a profile as a new timestamped version.
 - `R` restores one of a selected profile's timestamped versions.
 
 For troubleshooting, run:
