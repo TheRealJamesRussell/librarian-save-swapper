@@ -34,6 +34,11 @@ function Write-Warn {
     Write-Host $Message -ForegroundColor Yellow
 }
 
+function Write-Muted {
+    param([string]$Message)
+    Write-Host $Message -ForegroundColor DarkGray
+}
+
 function Write-Log {
     param([string]$Message)
     New-Item -ItemType Directory -Path $LogsRoot -Force | Out-Null
@@ -144,6 +149,91 @@ function Read-RequiredValue {
         $value = $value.Trim()
         if (-not [string]::IsNullOrWhiteSpace($value)) {
             return $value
+        }
+    }
+}
+
+function Read-InteractiveChoice {
+    param(
+        [string]$Title,
+        [array]$Items,
+        [scriptblock]$RenderItem,
+        [string]$HelpText = "Use Up/Down, Enter to select, Esc to cancel.",
+        [scriptblock]$RenderHeader = $null,
+        [switch]$AllowCancel
+    )
+
+    if ($Items.Count -eq 0) {
+        return $null
+    }
+
+    $selected = 0
+    while ($true) {
+        Clear-Host
+        Show-Header
+        if ($null -ne $RenderHeader) {
+            & $RenderHeader
+            Write-Host ""
+        }
+        Write-Host $Title -ForegroundColor Cyan
+        Write-Muted $HelpText
+        Write-Host ""
+
+        for ($i = 0; $i -lt $Items.Count; $i++) {
+            $label = & $RenderItem $Items[$i] $i
+            if ($i -eq $selected) {
+                Write-Host (" > {0}" -f $label) -ForegroundColor Black -BackgroundColor Cyan
+            } else {
+                Write-Host ("   {0}" -f $label) -ForegroundColor White
+            }
+        }
+
+        $key = [Console]::ReadKey($true)
+        switch ($key.Key) {
+            "UpArrow" {
+                if ($selected -le 0) {
+                    $selected = $Items.Count - 1
+                } else {
+                    $selected--
+                }
+            }
+            "DownArrow" {
+                if ($selected -ge ($Items.Count - 1)) {
+                    $selected = 0
+                } else {
+                    $selected++
+                }
+            }
+            "Home" { $selected = 0 }
+            "End" { $selected = $Items.Count - 1 }
+            "Enter" { return $Items[$selected] }
+            "Escape" {
+                if ($AllowCancel) {
+                    return $null
+                }
+            }
+            default {
+                if ($key.KeyChar) {
+                    foreach ($i in 0..($Items.Count - 1)) {
+                        $item = $Items[$i]
+                        if ($item.PSObject.Properties.Name.Contains("Key") -and -not [string]::IsNullOrWhiteSpace($item.Key)) {
+                            if ([string]::Equals([string]$key.KeyChar, [string]$item.Key, [System.StringComparison]::OrdinalIgnoreCase)) {
+                                return $item
+                            }
+                        }
+                    }
+                }
+
+                if ($key.KeyChar -and $key.KeyChar -match "^[0-9]$") {
+                    $index = [int]::Parse([string]$key.KeyChar) - 1
+                    if ($index -ge 0 -and $index -lt $Items.Count) {
+                        $item = $Items[$index]
+                        if (-not ($item.PSObject.Properties.Name.Contains("Kind") -and $item.Kind -eq "action")) {
+                            return $item
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -694,30 +784,11 @@ function Choose-Profile {
         return $null
     }
 
-    Write-Host ""
-    Write-Host "Profiles:"
-    for ($i = 0; $i -lt $profiles.Count; $i++) {
-        Write-Host ("  [{0}] {1}" -f ($i + 1), $profiles[$i].Name)
-    }
-
-    $choice = Read-Host $Prompt
-    if ($choice -match "^[Qq]$") {
-        return $null
-    }
-
-    $parsedChoice = 0
-    if (-not [int]::TryParse($choice, [ref]$parsedChoice)) {
-        Write-Warn "Invalid choice."
-        return $null
-    }
-
-    $index = $parsedChoice - 1
-    if ($index -lt 0 -or $index -ge $profiles.Count) {
-        Write-Warn "Invalid choice."
-        return $null
-    }
-
-    return $profiles[$index]
+    return Read-InteractiveChoice `
+        -Title $Prompt `
+        -Items $profiles `
+        -RenderItem { param($item, $index) "[{0}] {1}" -f ($index + 1), $item.Name } `
+        -AllowCancel
 }
 
 function Rename-Profile {
@@ -807,28 +878,14 @@ function Restore-ProfileVersion {
         return
     }
 
-    Clear-Host
-    Write-Host "Restore profile version"
-    Write-Host ""
-    Write-Host "Profile: $($profile.Name)"
-    Write-Host ""
-    Write-Host "Versions:"
-    for ($i = 0; $i -lt $versions.Count; $i++) {
-        Write-Host ("  [{0}] {1}" -f ($i + 1), $versions[$i].Name)
-    }
-    $choice = Read-Host "Choose a version number, or Q to cancel"
-    if ($choice -match "^[Qq]$") {
-        return
-    }
-    $parsedChoice = 0
-    if (-not [int]::TryParse($choice, [ref]$parsedChoice)) {
-        Write-Warn "Invalid choice."
-        return
-    }
+    $selectedVersion = Read-InteractiveChoice `
+        -Title "Restore profile version" `
+        -Items $versions `
+        -RenderHeader { Write-Host "Profile: $($profile.Name)" -ForegroundColor Yellow } `
+        -RenderItem { param($item, $index) "[{0}] {1}" -f ($index + 1), $item.Name } `
+        -AllowCancel
 
-    $index = $parsedChoice - 1
-    if ($index -lt 0 -or $index -ge $versions.Count) {
-        Write-Warn "Invalid choice."
+    if ($null -eq $selectedVersion) {
         return
     }
 
@@ -839,14 +896,14 @@ function Restore-ProfileVersion {
     }
 
     Backup-Directory -Source $SavePath -Reason "before-restore" | Out-Null
-    $selectedSaveFile = Join-Path $versions[$index].FullName $GameplaySaveFileName
+    $selectedSaveFile = Join-Path $selectedVersion.FullName $GameplaySaveFileName
     New-Item -ItemType Directory -Path $SavePath -Force | Out-Null
     Copy-Item -LiteralPath $selectedSaveFile -Destination (Join-Path $SavePath $GameplaySaveFileName) -Force
     New-ProfileVersionFromSaveFile -SourceSaveFile $selectedSaveFile -ProfileName $profile.Name | Out-Null
     $Config.lastActiveProfile = $profile.Name
     Save-Config $Config
-    Write-Log "Restored profile '$($profile.Name)' version '$($versions[$index].Name)' to active save folder."
-    Write-Info "Restored '$($profile.Name)' version '$($versions[$index].Name)'."
+    Write-Log "Restored profile '$($profile.Name)' version '$($selectedVersion.Name)' to active save folder."
+    Write-Info "Restored '$($profile.Name)' version '$($selectedVersion.Name)'."
 }
 
 function Start-SelectedProfile {
@@ -967,52 +1024,62 @@ function Show-Menu {
 
     while ($true) {
         $profiles = Get-Profiles
-        Clear-Host
-        Show-Header
-        Write-Host "Active profile: $($Config.lastActiveProfile)"
-        Write-Host ""
-        Write-Host "Profiles:"
-        if ($profiles.Count -eq 0) {
-            Write-Host "  No profiles yet."
-        } else {
-            for ($i = 0; $i -lt $profiles.Count; $i++) {
-                Write-Host ("  [{0}] {1}" -f ($i + 1), $profiles[$i].Name)
+        $menuItems = @()
+        foreach ($profile in $profiles) {
+            $menuItems += [pscustomobject]@{
+                Kind = "profile"
+                Key = ""
+                Label = $profile.Name
+                Profile = $profile
             }
         }
-        Write-Host ""
-        Write-Host "Actions:"
-        Write-Host "  [N] New profile from current save"
-        Write-Host "  [S] Start new playthrough"
-        Write-Host "  [E] Rename profile"
-        Write-Host "  [D] Delete profile"
-        Write-Host "  [B] Save current save to profile"
-        Write-Host "  [R] Restore profile version"
-        Write-Host "  [Q] Quit"
-        Write-Host ""
 
-        $choice = Read-Host "Choose"
-        switch -Regex ($choice) {
-            "^[Qq]$" { return }
-            "^[Nn]$" { New-ProfileFromCurrentSave -Config $Config -SavePath $SavePath; Pause; continue }
-            "^[Ss]$" { Start-NewPlaythrough -Config $Config -SavePath $SavePath; Pause; continue }
-            "^[Ee]$" { Rename-Profile -Config $Config; Pause; continue }
-            "^[Dd]$" { Delete-Profile -Config $Config; Pause; continue }
-            "^[Bb]$" { Backup-CurrentSave -Config $Config -SavePath $SavePath; Pause; continue }
-            "^[Rr]$" { Restore-ProfileVersion -Config $Config -SavePath $SavePath; Pause; continue }
-            "^\d+$" {
-                $index = [int]$choice - 1
-                if ($index -ge 0 -and $index -lt $profiles.Count) {
-                    Start-SelectedProfile -Config $Config -SavePath $SavePath -ProfileName $profiles[$index].Name
-                    Pause
-                    continue
+        $menuItems += [pscustomobject]@{ Kind = "action"; Key = "N"; Label = "New profile from current save"; Profile = $null }
+        $menuItems += [pscustomobject]@{ Kind = "action"; Key = "S"; Label = "Start new playthrough"; Profile = $null }
+        $menuItems += [pscustomobject]@{ Kind = "action"; Key = "E"; Label = "Rename profile"; Profile = $null }
+        $menuItems += [pscustomobject]@{ Kind = "action"; Key = "D"; Label = "Delete profile"; Profile = $null }
+        $menuItems += [pscustomobject]@{ Kind = "action"; Key = "B"; Label = "Save current save to profile"; Profile = $null }
+        $menuItems += [pscustomobject]@{ Kind = "action"; Key = "R"; Label = "Restore profile version"; Profile = $null }
+        $menuItems += [pscustomobject]@{ Kind = "action"; Key = "Q"; Label = "Quit"; Profile = $null }
+
+        $selected = Read-InteractiveChoice `
+            -Title "Main menu" `
+            -Items $menuItems `
+            -HelpText "Use Up/Down, Enter to select. Number keys select profiles." `
+            -RenderHeader {
+                if ([string]::IsNullOrWhiteSpace($Config.lastActiveProfile)) {
+                    Write-Host "Active profile: none" -ForegroundColor DarkGray
+                } else {
+                    Write-Host "Active profile: $($Config.lastActiveProfile)" -ForegroundColor Yellow
                 }
-                Write-Warn "Invalid profile number."
-                Pause
-                continue
+            } `
+            -RenderItem {
+                param($item, $index)
+                if ($item.Kind -eq "profile") {
+                    "[{0}] Play profile: {1}" -f ($index + 1), $item.Label
+                } else {
+                    "[$($item.Key)] $($item.Label)"
+                }
             }
+
+        if ($selected.Kind -eq "profile") {
+            Start-SelectedProfile -Config $Config -SavePath $SavePath -ProfileName $selected.Profile.Name
+            Pause
+            continue
+        }
+
+        switch ($selected.Key) {
+            "Q" { return }
+            "N" { New-ProfileFromCurrentSave -Config $Config -SavePath $SavePath; Pause; continue }
+            "S" { Start-NewPlaythrough -Config $Config -SavePath $SavePath; Pause; continue }
+            "E" { Rename-Profile -Config $Config; Pause; continue }
+            "D" { Delete-Profile -Config $Config; Pause; continue }
+            "B" { Backup-CurrentSave -Config $Config -SavePath $SavePath; Pause; continue }
+            "R" { Restore-ProfileVersion -Config $Config -SavePath $SavePath; Pause; continue }
             default {
                 Write-Warn "Invalid choice."
                 Pause
+                continue
             }
         }
     }
