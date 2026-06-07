@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 $LauncherName = "librarian-save-swapper"
 $DefaultGameExePath = "C:\Program Files (x86)\Steam\steamapps\common\Librarian Tidy Up the Arcane Library!\Librarian.exe"
 $DefaultSavePath = "%LOCALAPPDATA%\Librarian\Saved\SaveGames"
+$GameplaySaveFileName = "Sav.sav"
 $AppRoot = Join-Path $env:APPDATA $LauncherName
 $ProfilesRoot = Join-Path $AppRoot "profiles"
 $BackupsRoot = Join-Path $AppRoot "backups"
@@ -88,6 +89,11 @@ function Test-DirectoryHasFiles {
         return $false
     }
     return $null -ne (Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue | Select-Object -First 1)
+}
+
+function Test-ProfileHasGameplaySave {
+    param([string]$ProfilePath)
+    return Test-Path -LiteralPath (Join-Path $ProfilePath $GameplaySaveFileName)
 }
 
 function Get-Profiles {
@@ -240,13 +246,18 @@ function Save-ActiveToProfile {
     }
 
     $profilePath = Join-Path $ProfilesRoot $ProfileName
-    if (Test-DirectoryHasFiles $profilePath) {
+    $activeSaveFile = Join-Path $SavePath $GameplaySaveFileName
+    if (-not (Test-Path -LiteralPath $activeSaveFile)) {
+        throw "Could not find gameplay save file: $activeSaveFile"
+    }
+
+    if (Test-ProfileHasGameplaySave $profilePath) {
         Backup-Directory -Source $profilePath -Reason "profile-${ProfileName}-before-overwrite" | Out-Null
     }
 
-    Clear-DirectoryContents -Path $profilePath
-    Copy-DirectoryContents -Source $SavePath -Destination $profilePath
-    Write-Log "Saved active saves to profile '$ProfileName'."
+    New-Item -ItemType Directory -Path $profilePath -Force | Out-Null
+    Copy-Item -LiteralPath $activeSaveFile -Destination (Join-Path $profilePath $GameplaySaveFileName) -Force
+    Write-Log "Saved active gameplay save to profile '$ProfileName'."
 }
 
 function Load-ProfileToActive {
@@ -264,9 +275,14 @@ function Load-ProfileToActive {
         throw "Profile '$ProfileName' does not exist."
     }
 
-    Clear-DirectoryContents -Path $SavePath
-    Copy-DirectoryContents -Source $profilePath -Destination $SavePath
-    Write-Log "Loaded profile '$ProfileName' into active save folder."
+    $profileSaveFile = Join-Path $profilePath $GameplaySaveFileName
+    if (-not (Test-Path -LiteralPath $profileSaveFile)) {
+        throw "Profile '$ProfileName' does not contain $GameplaySaveFileName."
+    }
+
+    New-Item -ItemType Directory -Path $SavePath -Force | Out-Null
+    Copy-Item -LiteralPath $profileSaveFile -Destination (Join-Path $SavePath $GameplaySaveFileName) -Force
+    Write-Log "Loaded profile '$ProfileName' gameplay save into active save folder."
 }
 
 function Resolve-GameExe {

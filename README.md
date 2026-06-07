@@ -2,7 +2,7 @@
 
 A small Windows save-profile launcher for `Librarian: Tidy Up the Arcane Library!`.
 
-The game uses one active save folder. This launcher keeps separate profile folders, swaps the selected profile into the active save folder, starts the game, waits for it to close, and then copies the updated save back into that profile.
+The game uses one active save folder. This launcher keeps separate profile folders, swaps the selected profile's `Sav.sav` into the active save folder, starts the game, waits for it to close, and then copies the updated `Sav.sav` back into that profile.
 
 ## Install
 
@@ -66,15 +66,23 @@ Game save folder:
 %LOCALAPPDATA%\Librarian\Saved\SaveGames
 ```
 
+Per-profile gameplay file:
+
+```text
+Sav.sav
+```
+
+The launcher leaves `SystemSetting.sav` in the active save folder so graphics/audio/control settings stay global instead of moving between profiles.
+
 ## Safety
 
 The launcher is designed to be conservative:
 
 - It refuses to swap profiles while `Librarian.exe` appears to be running.
-- It backs up the active save folder before switching profiles.
+- It backs up the full active save folder before switching profiles.
 - It backs up a managed profile before overwriting it.
 - It archives profiles instead of permanently deleting them.
-- It only clears the expected `Librarian\Saved\SaveGames` folder.
+- It swaps only `Sav.sav` between profiles.
 - It keeps profiles and backups when uninstalling unless you explicitly type `DELETE`.
 
 ## Steam Cloud Warning
