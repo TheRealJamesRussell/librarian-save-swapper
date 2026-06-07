@@ -9,6 +9,7 @@ $LauncherName = "librarian-save-swapper"
 $DefaultGameExePath = "C:\Program Files (x86)\Steam\steamapps\common\Librarian Tidy Up the Arcane Library!\Librarian.exe"
 $DefaultSavePath = "%LOCALAPPDATA%\Librarian\Saved\SaveGames"
 $GameplaySaveFileName = "Sav.sav"
+$ProfileVersionRetention = 5
 $AppRoot = Join-Path $env:APPDATA $LauncherName
 $ProfilesRoot = Join-Path $AppRoot "profiles"
 $BackupsRoot = Join-Path $AppRoot "backups"
@@ -89,11 +90,6 @@ function Test-DirectoryHasFiles {
         return $false
     }
     return $null -ne (Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue | Select-Object -First 1)
-}
-
-function Test-ProfileHasGameplaySave {
-    param([string]$ProfilePath)
-    return Test-Path -LiteralPath (Join-Path $ProfilePath $GameplaySaveFileName)
 }
 
 function Get-Profiles {
@@ -195,6 +191,11 @@ function New-BackupName {
     return "${stamp}_${Reason}"
 }
 
+function New-VersionName {
+    $stamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+    return $stamp
+}
+
 function Get-UniqueChildPath {
     param(
         [string]$Parent,
@@ -235,6 +236,48 @@ function Backup-Directory {
     return $backupPath
 }
 
+function Get-ProfileVersionDirectories {
+    param([string]$ProfilePath)
+
+    if (-not (Test-Path -LiteralPath $ProfilePath)) {
+        return
+    }
+
+    Get-ChildItem -LiteralPath $ProfilePath -Directory -ErrorAction SilentlyContinue |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName $GameplaySaveFileName) } |
+        Sort-Object Name -Descending
+}
+
+function Get-LatestProfileSaveFile {
+    param([string]$ProfilePath)
+
+    $versions = @(Get-ProfileVersionDirectories -ProfilePath $ProfilePath)
+    if ($versions.Count -gt 0) {
+        return Join-Path $versions[0].FullName $GameplaySaveFileName
+    }
+
+    $legacySaveFile = Join-Path $ProfilePath $GameplaySaveFileName
+    if (Test-Path -LiteralPath $legacySaveFile) {
+        return $legacySaveFile
+    }
+
+    return $null
+}
+
+function Remove-OldProfileVersions {
+    param([string]$ProfilePath)
+
+    $versions = @(Get-ProfileVersionDirectories -ProfilePath $ProfilePath)
+    if ($versions.Count -le $ProfileVersionRetention) {
+        return
+    }
+
+    $versions | Select-Object -Skip $ProfileVersionRetention | ForEach-Object {
+        Write-Log "Pruned old profile version '$($_.FullName)'."
+        Remove-Item -LiteralPath $_.FullName -Recurse -Force
+    }
+}
+
 function Save-ActiveToProfile {
     param(
         [string]$SavePath,
@@ -251,13 +294,11 @@ function Save-ActiveToProfile {
         throw "Could not find gameplay save file: $activeSaveFile"
     }
 
-    if (Test-ProfileHasGameplaySave $profilePath) {
-        Backup-Directory -Source $profilePath -Reason "profile-${ProfileName}-before-overwrite" | Out-Null
-    }
-
     New-Item -ItemType Directory -Path $profilePath -Force | Out-Null
-    Copy-Item -LiteralPath $activeSaveFile -Destination (Join-Path $profilePath $GameplaySaveFileName) -Force
-    Write-Log "Saved active gameplay save to profile '$ProfileName'."
+    $versionPath = New-UniqueChildDirectory -Parent $profilePath -BaseName (New-VersionName)
+    Copy-Item -LiteralPath $activeSaveFile -Destination (Join-Path $versionPath $GameplaySaveFileName) -Force
+    Remove-OldProfileVersions -ProfilePath $profilePath
+    Write-Log "Saved active gameplay save to profile '$ProfileName' version '$versionPath'."
 }
 
 function Load-ProfileToActive {
@@ -275,8 +316,8 @@ function Load-ProfileToActive {
         throw "Profile '$ProfileName' does not exist."
     }
 
-    $profileSaveFile = Join-Path $profilePath $GameplaySaveFileName
-    if (-not (Test-Path -LiteralPath $profileSaveFile)) {
+    $profileSaveFile = Get-LatestProfileSaveFile -ProfilePath $profilePath
+    if ([string]::IsNullOrWhiteSpace($profileSaveFile)) {
         throw "Profile '$ProfileName' does not contain $GameplaySaveFileName."
     }
 
@@ -572,7 +613,6 @@ function Start-SelectedProfile {
         Write-Info "Waiting for game to close..."
         $process.WaitForExit()
         Write-Info "Game closed. Saving updated progress to $ProfileName..."
-        Backup-Directory -Source (Join-Path $ProfilesRoot $ProfileName) -Reason "profile-${ProfileName}-before-after-game-save" | Out-Null
         Save-ActiveToProfile -SavePath $SavePath -ProfileName $ProfileName
         Save-Config $Config
         Write-Info "Done."

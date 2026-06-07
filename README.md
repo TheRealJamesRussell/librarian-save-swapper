@@ -48,6 +48,12 @@ Managed profiles:
 %APPDATA%\librarian-save-swapper\profiles
 ```
 
+Each profile keeps the newest five timestamped gameplay-save versions:
+
+```text
+%APPDATA%\librarian-save-swapper\profiles\<ProfileName>\2026-06-07_14-32-10\Sav.sav
+```
+
 Archived profiles:
 
 ```text
@@ -80,7 +86,7 @@ The launcher is designed to be conservative:
 
 - It refuses to swap profiles while `Librarian.exe` appears to be running.
 - It backs up the full active save folder before switching profiles.
-- It backs up a managed profile before overwriting it.
+- It keeps the latest five timestamped `Sav.sav` versions per profile.
 - It archives profiles instead of permanently deleting them.
 - It swaps only `Sav.sav` between profiles.
 - It keeps profiles and backups when uninstalling unless you explicitly type `DELETE`.
