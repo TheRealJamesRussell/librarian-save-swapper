@@ -1225,10 +1225,17 @@ function Start-SelectedProfile {
     }
 
     if ($Config.waitForGameExit -and $gameClosed) {
-        Write-Info "Game closed. Saving updated progress to $ProfileName..."
-        Save-ActiveToProfile -SavePath $SavePath -ProfileName $ProfileName
-        Save-Config $Config
-        Write-Info "Done."
+        if (Test-Path -LiteralPath $activeSaveFile) {
+            Write-Info "Game closed. Saving updated progress to $ProfileName..."
+            Save-ActiveToProfile -SavePath $SavePath -ProfileName $ProfileName
+            Save-Config $Config
+            Write-Info "Done."
+        } else {
+            Write-Warn "Game closed, but no $GameplaySaveFileName was found."
+            Write-Muted "No profile save was updated."
+            Write-Log "No $GameplaySaveFileName found after profile '$ProfileName' exited."
+            return $true
+        }
     }
     return $false
 }
