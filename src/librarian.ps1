@@ -1069,18 +1069,92 @@ function Start-NewPlaythrough {
 }
 
 function Show-Header {
-    $title = @(
-        " __    _ _               _            _____                _____                           ",
-        "|  |  |_| |_ ___ ___ ___|_|___ ___   |   __|___ _ _ ___   |   __|_ _ _ ___ ___ ___ ___ ___ ",
-        "|  |__| | . |  _| .'|  _| | .'|   |  |__   | .'| | | -_|  |__   | | | | .'| . | . | -_|  _|",
-        "|_____|_|___|_| |__,|_| |_|__,|_|_|  |_____|__,|\_/|___|  |_____|_____|__,|  _|  _|___|_|  ",
-        "                                                                          |_| |_|          "
+    $shelf = @(
+        @(
+            @{ Text = "             .--.           "; Color = "DarkYellow" },
+            @{ Text = ".---."; Color = "DarkCyan" },
+            @{ Text = "        .-."; Color = "DarkGreen" }
+        ),
+        @(
+            @{ Text = "         .---"; Color = "DarkYellow" },
+            @{ Text = "|--|"; Color = "Yellow" },
+            @{ Text = "   .-.     "; Color = "DarkGray" },
+            @{ Text = "| A |"; Color = "DarkCyan" },
+            @{ Text = "  .---. "; Color = "DarkMagenta" },
+            @{ Text = "|~|"; Color = "Green" },
+            @{ Text = "    .--."; Color = "DarkBlue" }
+        ),
+        @(
+            @{ Text = "      .--"; Color = "DarkYellow" },
+            @{ Text = "|===|Ch|"; Color = "Yellow" },
+            @{ Text = "---|_|--.__"; Color = "DarkGray" },
+            @{ Text = "| S |"; Color = "DarkCyan" },
+            @{ Text = "--|:::| "; Color = "DarkMagenta" },
+            @{ Text = "|~|"; Color = "Green" },
+            @{ Text = "-==-"; Color = "DarkGray" },
+            @{ Text = "|==|"; Color = "DarkBlue" },
+            @{ Text = "---."; Color = "DarkGray" }
+        ),
+        @(
+            @{ Text = "      "; Color = "DarkGray" },
+            @{ Text = "|%%|NT2|oc|"; Color = "Yellow" },
+            @{ Text = "===| |~~"; Color = "DarkGray" },
+            @{ Text = "|%%| C |"; Color = "DarkCyan" },
+            @{ Text = "--|   |_|"; Color = "DarkMagenta" },
+            @{ Text = "~|"; Color = "Green" },
+            @{ Text = "CATS"; Color = "Blue" },
+            @{ Text = "|  |___|-."; Color = "DarkBlue" }
+        ),
+        @(
+            @{ Text = "      "; Color = "DarkGray" },
+            @{ Text = "|  |   |ah|"; Color = "Yellow" },
+            @{ Text = "===| |=="; Color = "DarkGray" },
+            @{ Text = "|  | I |"; Color = "DarkCyan" },
+            @{ Text = "  |:::|=| "; Color = "DarkMagenta" },
+            @{ Text = "|    |"; Color = "Blue" },
+            @{ Text = "GB"; Color = "DarkBlue" },
+            @{ Text = "|---|=|"; Color = "DarkGray" }
+        ),
+        @(
+            @{ Text = "      "; Color = "DarkGray" },
+            @{ Text = "|  |   |ol|"; Color = "Yellow" },
+            @{ Text = "   |_|__"; Color = "DarkGray" },
+            @{ Text = "|  | I |"; Color = "DarkCyan" },
+            @{ Text = "__|   | | "; Color = "DarkMagenta" },
+            @{ Text = "|    |"; Color = "Blue" },
+            @{ Text = "  |___| |"; Color = "DarkBlue" }
+        ),
+        @(
+            @{ Text = "      "; Color = "DarkGray" },
+            @{ Text = "|~~|===|--|"; Color = "Yellow" },
+            @{ Text = "===|~|~~"; Color = "DarkGray" },
+            @{ Text = "|%%|~~~|"; Color = "DarkCyan" },
+            @{ Text = "--|:::|=|"; Color = "DarkMagenta" },
+            @{ Text = "~|----|"; Color = "Blue" },
+            @{ Text = "==|---|=|"; Color = "DarkBlue" }
+        ),
+        @(
+            @{ Text = "      ^--^---'--^---^-^--^--^---'--^---^-^-^-==-^--^---^-'"; Color = "DarkGray" }
+        ),
+        @(
+            @{ Text = "      .---------------------------------------------------."; Color = "DarkGray" }
+        ),
+        @(
+            @{ Text = "      |"; Color = "DarkGray" },
+            @{ Text = "    L I B R A R I A N   S A V E   S W A P P E R    "; Color = "Cyan" },
+            @{ Text = "|"; Color = "DarkGray" }
+        ),
+        @(
+            @{ Text = "      '---------------------------------------------------'"; Color = "DarkGray" }
+        )
     )
 
-    foreach ($line in $title) {
-        Write-Host $line -ForegroundColor Cyan
+    foreach ($line in $shelf) {
+        foreach ($segment in $line) {
+            Write-Host $segment.Text -ForegroundColor $segment.Color -NoNewline
+        }
+        Write-Host ""
     }
-    Write-Host ("-" * 92) -ForegroundColor DarkGray
     Write-Host ""
 }
 
