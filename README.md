@@ -97,17 +97,15 @@ Each profile keeps the newest five timestamped gameplay-save versions:
 %APPDATA%\librarian-save-swapper\profiles\<ProfileName>\2026-06-07_14-32-10\Sav.sav
 ```
 
-Archived profiles:
-
-```text
-%APPDATA%\librarian-save-swapper\archives
-```
-
-Backups:
+Safety backups:
 
 ```text
 %APPDATA%\librarian-save-swapper\backups
 ```
+
+The launcher keeps only the newest five safety backups. Older backup folders are removed automatically.
+
+Deleted profiles are moved to the Windows Recycle Bin, not to a separate archive folder. Restore them from the Recycle Bin if needed, or empty the Recycle Bin to remove them permanently.
 
 ## License
 

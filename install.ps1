@@ -36,7 +36,6 @@ New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 New-Item -ItemType Directory -Path $AppDataDir -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $AppDataDir "profiles") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $AppDataDir "backups") -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $AppDataDir "archives") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $AppDataDir "logs") -Force | Out-Null
 
 if ([string]::IsNullOrWhiteSpace($SourceRoot)) {

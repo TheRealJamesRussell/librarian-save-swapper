@@ -13,10 +13,10 @@ $DefaultGameExePath = "C:\Program Files (x86)\Steam\steamapps\common\Librarian T
 $DefaultSavePath = "%LOCALAPPDATA%\Librarian\Saved\SaveGames"
 $GameplaySaveFileName = "Sav.sav"
 $ProfileVersionRetention = 5
+$BackupRetention = 5
 $AppRoot = Join-Path $env:APPDATA $LauncherName
 $ProfilesRoot = Join-Path $AppRoot "profiles"
 $BackupsRoot = Join-Path $AppRoot "backups"
-$ArchivesRoot = Join-Path $AppRoot "archives"
 $LogsRoot = Join-Path $AppRoot "logs"
 $ConfigPath = Join-Path $AppRoot "config.json"
 $LogPath = Join-Path $LogsRoot "launcher.log"
@@ -57,7 +57,7 @@ function Get-FullPath {
 }
 
 function Ensure-Directories {
-    foreach ($dir in @($AppRoot, $ProfilesRoot, $BackupsRoot, $ArchivesRoot, $LogsRoot)) {
+    foreach ($dir in @($AppRoot, $ProfilesRoot, $BackupsRoot, $LogsRoot)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
 }
@@ -247,7 +247,20 @@ function Backup-Directory {
     $backupPath = New-UniqueChildDirectory -Parent $BackupsRoot -BaseName (New-BackupName $Reason)
     Copy-DirectoryContents -Source $Source -Destination $backupPath
     Write-Log "Backed up '$Source' to '$backupPath'."
+    Remove-OldBackups
     return $backupPath
+}
+
+function Remove-OldBackups {
+    $backups = @(Get-ChildItem -LiteralPath $BackupsRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending)
+    if ($backups.Count -le $BackupRetention) {
+        return
+    }
+
+    $backups | Select-Object -Skip $BackupRetention | ForEach-Object {
+        Write-Log "Pruned old backup '$($_.FullName)'."
+        Remove-Item -LiteralPath $_.FullName -Recurse -Force
+    }
 }
 
 function Get-SaveHash {
@@ -609,7 +622,6 @@ function Rename-Profile {
         }
     } while (-not (Test-SafeProfileName $newName))
 
-    Backup-Directory -Source $profile.FullName -Reason "profile-$($profile.Name)-before-rename" | Out-Null
     Rename-Item -LiteralPath $profile.FullName -NewName $newName
     if ($Config.lastActiveProfile -eq $profile.Name) {
         $Config.lastActiveProfile = $newName
@@ -619,33 +631,44 @@ function Rename-Profile {
     Write-Info "Renamed profile to '$newName'."
 }
 
-function Archive-Profile {
+function Move-DirectoryToRecycleBin {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory(
+        $Path,
+        [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
+        [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
+    )
+}
+
+function Delete-Profile {
     param([object]$Config)
 
-    $profile = Choose-Profile -Prompt "Choose a profile number to archive, or Q to cancel"
+    $profile = Choose-Profile -Prompt "Choose a profile number to delete, or Q to cancel"
     if ($null -eq $profile) {
         return
     }
 
-    Write-Warn "This will not permanently delete the profile."
-    Write-Warn "It will move it to:"
-    Write-Host $ArchivesRoot
-    $confirm = Read-Host "Type ARCHIVE to continue"
-    if ($confirm -ne "ARCHIVE") {
-        Write-Info "Archive cancelled."
+    Write-Warn "This moves the profile to the Windows Recycle Bin."
+    Write-Warn "You can restore it from there, or empty the Recycle Bin to remove it permanently."
+    $confirm = Read-Host "Type DELETE to continue"
+    if ($confirm -ne "DELETE") {
+        Write-Info "Delete cancelled."
         return
     }
 
-    $archiveName = "$(New-BackupName "profile-archive")_$($profile.Name)"
-    $archivePath = Get-UniqueChildPath -Parent $ArchivesRoot -BaseName $archiveName
-    Move-Item -LiteralPath $profile.FullName -Destination $archivePath
+    Move-DirectoryToRecycleBin -Path $profile.FullName
     if ($Config.lastActiveProfile -eq $profile.Name) {
         $Config.lastActiveProfile = $null
         Save-Config $Config
     }
-    Write-Log "Archived profile '$($profile.Name)' to '$archivePath'."
-    Write-Info "Archived profile:"
-    Write-Host $archivePath
+    Write-Log "Moved profile '$($profile.Name)' to the Windows Recycle Bin."
+    Write-Info "Moved profile '$($profile.Name)' to the Windows Recycle Bin."
 }
 
 function Restore-FromBackup {
@@ -763,7 +786,7 @@ function Show-Menu {
         Write-Host "Actions:"
         Write-Host "  [N] New profile from current save"
         Write-Host "  [E] Rename profile"
-        Write-Host "  [D] Archive/delete profile"
+        Write-Host "  [D] Delete profile"
         Write-Host "  [B] Backup current save"
         Write-Host "  [R] Restore from backup"
         Write-Host "  [Q] Quit"
@@ -774,7 +797,7 @@ function Show-Menu {
             "^[Qq]$" { return }
             "^[Nn]$" { New-ProfileFromCurrentSave -Config $Config -SavePath $SavePath; Pause; continue }
             "^[Ee]$" { Rename-Profile -Config $Config; Pause; continue }
-            "^[Dd]$" { Archive-Profile -Config $Config; Pause; continue }
+            "^[Dd]$" { Delete-Profile -Config $Config; Pause; continue }
             "^[Bb]$" { Backup-CurrentSave -SavePath $SavePath; Pause; continue }
             "^[Rr]$" { Restore-FromBackup -SavePath $SavePath; Pause; continue }
             "^\d+$" {
@@ -807,7 +830,6 @@ if (-not $SkipMain) {
             Write-DebugLog "App root '$AppRoot'."
             Write-DebugLog "Profiles root '$ProfilesRoot'."
             Write-DebugLog "Backups root '$BackupsRoot'."
-            Write-DebugLog "Archives root '$ArchivesRoot'."
             Write-DebugLog "Config path '$ConfigPath'."
         }
 
