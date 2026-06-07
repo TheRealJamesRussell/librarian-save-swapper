@@ -13,6 +13,7 @@ $DefaultGameExePath = "C:\Program Files (x86)\Steam\steamapps\common\Librarian T
 $DefaultSavePath = "%LOCALAPPDATA%\Librarian\Saved\SaveGames"
 $DefaultSteamAppId = "4197610"
 $GameProcessName = "Librarian"
+$GameProcessNames = @("Librarian-Win64-Shipping", "Librarian")
 $GameplaySaveFileName = "Sav.sav"
 $ProfileVersionRetention = 5
 $BackupRetention = 5
@@ -186,7 +187,47 @@ function Get-Profiles {
 }
 
 function Test-GameRunning {
-    return $null -ne (Get-Process -Name $GameProcessName -ErrorAction SilentlyContinue)
+    foreach ($processName in $GameProcessNames) {
+        if ($null -ne (Get-Process -Name $processName -ErrorAction SilentlyContinue)) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Get-RunningGameProcesses {
+    $processes = foreach ($processName in $GameProcessNames) {
+        Get-Process -Name $processName -ErrorAction SilentlyContinue
+    }
+
+    @($processes | Sort-Object ProcessName, Id -Unique)
+}
+
+function Format-ProcessList {
+    param([array]$Processes)
+
+    if ($Processes.Count -eq 0) {
+        return "none"
+    }
+
+    return (($Processes | ForEach-Object { "$($_.ProcessName):$($_.Id)" }) -join ", ")
+}
+
+function Wait-ForGameProcessesToExit {
+    while ($true) {
+        $processes = @(Get-RunningGameProcesses)
+        if ($processes.Count -eq 0) {
+            return
+        }
+
+        foreach ($process in $processes) {
+            try {
+                $process.WaitForExit(1000) | Out-Null
+            } catch {
+                Write-DebugLog "Process '$($process.ProcessName):$($process.Id)' disappeared while waiting."
+            }
+        }
+    }
 }
 
 function Test-SteamRunning {
@@ -758,8 +799,8 @@ function Start-GameAndWait {
 
         if ($Config.waitForGameExit) {
             Write-Info "Waiting for game to close..."
-            $process.WaitForExit()
-            Write-DebugLog "Game process '$($process.Id)' exited with code '$($process.ExitCode)'."
+            Wait-ForGameProcessesToExit
+            Write-DebugLog "Direct-launched game processes exited."
         }
         return $true
     }
@@ -775,28 +816,28 @@ function Start-GameAndWait {
     }
 
     Write-Info "Waiting for game process to start..."
-    $process = $null
+    $processes = @()
     $deadline = (Get-Date).AddMinutes(3)
     while ((Get-Date) -lt $deadline) {
-        $process = Get-Process -Name $GameProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($null -ne $process) {
+        $processes = @(Get-RunningGameProcesses)
+        if ($processes.Count -gt 0) {
             break
         }
         Start-Sleep -Seconds 1
     }
 
-    if ($null -eq $process) {
-        Write-Warn "Steam launch requested, but $GameProcessName did not start."
+    if ($processes.Count -eq 0) {
+        Write-Warn "Steam launch requested, but the game did not start."
         Write-Muted "If Steam is updating, close the game later and run librarian again."
-        Write-Log "Timed out waiting for '$GameProcessName' after Steam launch."
+        Write-Log "Timed out waiting for game processes '$($GameProcessNames -join ', ')' after Steam launch."
         return $false
     }
 
-    Write-DebugLog "Detected Steam-launched game process id '$($process.Id)'."
-    Write-Log "Detected Steam-launched game process '$($process.Id)'."
+    Write-DebugLog "Detected Steam-launched game processes: $(Format-ProcessList $processes)."
+    Write-Log "Detected Steam-launched game processes: $(Format-ProcessList $processes)."
     Write-Info "Waiting for game to close..."
-    $process.WaitForExit()
-    Write-DebugLog "Steam-launched game process '$($process.Id)' exited."
+    Wait-ForGameProcessesToExit
+    Write-DebugLog "Steam-launched game processes exited."
     return $true
 }
 
