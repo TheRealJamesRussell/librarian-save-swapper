@@ -1,4 +1,4 @@
-# librarygame-launcher
+# librarian-save-swapper
 
 A small Windows save-profile launcher for `Librarian: Tidy Up the Arcane Library!`.
 
@@ -12,10 +12,10 @@ From this repo folder:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-For a GitHub-hosted release, use the raw `install.ps1` URL:
+For a GitHub-hosted install, use:
 
 ```powershell
-irm https://raw.githubusercontent.com/<owner>/librarygame-launcher/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/TheRealJamesRussell/librarian-save-swapper/main/install.ps1 | iex
 ```
 
 `irm` is `Invoke-RestMethod`, and `iex` is `Invoke-Expression`.
@@ -33,31 +33,31 @@ The first run will create launcher folders and ask what to do if it finds existi
 Installed launcher files:
 
 ```text
-%LOCALAPPDATA%\Programs\librarygame-launcher
+%LOCALAPPDATA%\Programs\librarian-save-swapper
 ```
 
 Profiles, backups, config, and logs:
 
 ```text
-%APPDATA%\librarygame-launcher
+%APPDATA%\librarian-save-swapper
 ```
 
 Managed profiles:
 
 ```text
-%APPDATA%\librarygame-launcher\profiles
+%APPDATA%\librarian-save-swapper\profiles
 ```
 
 Archived profiles:
 
 ```text
-%APPDATA%\librarygame-launcher\archives
+%APPDATA%\librarian-save-swapper\archives
 ```
 
 Backups:
 
 ```text
-%APPDATA%\librarygame-launcher\backups
+%APPDATA%\librarian-save-swapper\backups
 ```
 
 Game save folder:
@@ -96,13 +96,13 @@ Run `librarygame`, choose `R`, and select a backup to restore. The launcher crea
 You can also manually inspect backups here:
 
 ```text
-%APPDATA%\librarygame-launcher\backups
+%APPDATA%\librarian-save-swapper\backups
 ```
 
 ## Uninstall
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\librarygame-launcher\uninstall.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\librarian-save-swapper\uninstall.ps1"
 ```
 
 The uninstaller removes the `librarygame` command and installed launcher files. It keeps profiles and backups by default.
@@ -117,3 +117,4 @@ The uninstaller removes the `librarygame` command and installed launcher files. 
 ## License
 
 Licensed under the MIT License.
+

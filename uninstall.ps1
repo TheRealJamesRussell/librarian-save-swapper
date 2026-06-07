@@ -1,8 +1,8 @@
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
-$InstallDir = Join-Path $env:LOCALAPPDATA "Programs\librarygame-launcher"
-$AppDataDir = Join-Path $env:APPDATA "librarygame-launcher"
+$InstallDir = Join-Path $env:LOCALAPPDATA "Programs\librarian-save-swapper"
+$AppDataDir = Join-Path $env:APPDATA "librarian-save-swapper"
 $AppPathsKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\librarygame.exe"
 
 if (Test-Path -LiteralPath $AppPathsKey) {
@@ -34,3 +34,4 @@ if (Test-Path -LiteralPath $AppDataDir) {
         Write-Host "Kept launcher-managed data."
     }
 }
+

@@ -1,13 +1,13 @@
 param(
     [string]$SourceRoot = "",
-    [string]$RepositoryRawBase = ""
+    [string]$RepositoryRawBase = "https://raw.githubusercontent.com/TheRealJamesRussell/librarian-save-swapper/main"
 )
 
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
-$InstallDir = Join-Path $env:LOCALAPPDATA "Programs\librarygame-launcher"
-$AppDataDir = Join-Path $env:APPDATA "librarygame-launcher"
+$InstallDir = Join-Path $env:LOCALAPPDATA "Programs\librarian-save-swapper"
+$AppDataDir = Join-Path $env:APPDATA "librarian-save-swapper"
 $AppPathsKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\librarygame.exe"
 
 function Copy-FromLocalSource {
@@ -75,8 +75,9 @@ if (($userPath -split ";") -notcontains $InstallDir) {
 }
 
 Write-Host ""
-Write-Host "librarygame-launcher installed." -ForegroundColor Green
+Write-Host "librarian-save-swapper installed." -ForegroundColor Green
 Write-Host "Run it with Win + R, then type: librarygame"
 Write-Host "Installed to: $InstallDir"
 Write-Host "Profiles and backups live in: $AppDataDir"
 Write-Host "Uninstall with: powershell -NoProfile -ExecutionPolicy Bypass -File `"$InstallDir\uninstall.ps1`""
+

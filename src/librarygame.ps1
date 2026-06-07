@@ -5,7 +5,7 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
-$LauncherName = "librarygame-launcher"
+$LauncherName = "librarian-save-swapper"
 $DefaultGameExePath = "C:\Program Files (x86)\Steam\steamapps\common\Librarian Tidy Up the Arcane Library!\Librarian.exe"
 $DefaultSavePath = "%LOCALAPPDATA%\Librarian\Saved\SaveGames"
 $AppRoot = Join-Path $env:APPDATA $LauncherName
@@ -643,3 +643,4 @@ if (-not $SkipMain) {
         exit 1
     }
 }
+
