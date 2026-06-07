@@ -102,7 +102,7 @@ One practical alternative is to sync the managed profile folder yourself with a 
 %APPDATA%\librarian-save-swapper\profiles
 ```
 
-That keeps the launcher-managed profile versions in your Google Drive while leaving the game's active save folder local. Avoid syncing the active game save folder directly while the game is running.
+That keeps the launcher-managed profile versions in your Google Drive while leaving the game's active save folder local.
 
 ## Where Files Go
 
