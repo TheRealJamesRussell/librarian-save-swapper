@@ -769,7 +769,7 @@ function Initialize-FirstProfile {
         [string]$SavePath
     )
 
-    $profiles = Get-Profiles
+    $profiles = @(Get-Profiles)
     if ($profiles.Count -gt 0) {
         return
     }
