@@ -27,7 +27,7 @@ As of June 2026, the game does not support multiple saves. It uses one active sa
 To install the latest official release, open PowerShell and paste this command:
 
 ```powershell
-irm https://raw.githubusercontent.com/TheRealJamesRussell/librarian-save-swapper/v1.0.1/install.ps1 | iex
+irm https://raw.githubusercontent.com/TheRealJamesRussell/librarian-save-swapper/v1.0.2/install.ps1 | iex
 ```
 
 Releases are available here:
