@@ -35,12 +35,7 @@ Releases are available here:
 ```text
 https://github.com/TheRealJamesRussell/librarian-save-swapper/releases
 ```
-
-If you prefer the newest version from `main`, use:
-
-```powershell
-irm https://raw.githubusercontent.com/TheRealJamesRussell/librarian-save-swapper/main/install.ps1 | iex
-```
+After downloading the .zip. Unzip it and right click the install file and choose the run with poweshell option.
 
 ## Use
 
