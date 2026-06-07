@@ -1,124 +1,32 @@
-# librarian-save-swapper
+# 📚🔮 Librarian: Save Swapper
 
-A small Windows save-profile launcher for `Librarian: Tidy Up the Arcane Library!`.
+Unnoficial Launcher & Save Swapper for `Librarian: Tidy Up the Arcane Library!`.
 
-The game uses one active save folder. This launcher keeps separate profile folders, swaps the selected profile's `Sav.sav` into the active save folder, starts the game, waits for it to close, and then copies the updated `Sav.sav` back into that profile.
+As of June 2026 the game does not support multiple saves. It uses one active save folder. This launcher allows you to pick and swap the selected save into the active save folder before starting the game. 
+
+## Features
+emoji Allows multiple named saves.
+emoiji Keeps 5 backups of each saves.
+emoji Extremely low to no performance overhead.
+
+## Prerequisites
+- Windows. This script only supports Windows for now if you use another OS (be it linux or mac). Open a Issue and we can chat on getting support. 
+- turn off cloud sync for the game (see instructions lower down)
 
 ## Install
-
-From this repo folder:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
-```
-
-For a GitHub-hosted install, use:
-
+Simplest way to install this is to open powershell and paste this command.
 ```powershell
 irm https://raw.githubusercontent.com/TheRealJamesRussell/librarian-save-swapper/main/install.ps1 | iex
 ```
 
-`irm` is `Invoke-RestMethod`, and `iex` is `Invoke-Expression`.
+Or Download the latesr release "here" and run "this".
 
-## Use
+## To use
 
 1. Press `Win + R`.
 2. Type `librarian`.
-3. Pick a profile number, or choose an action from the menu.
 
 The first run will create launcher folders and ask what to do if it finds existing active saves but no managed profile yet.
-
-For troubleshooting, run:
-
-```text
-librarian --log
-```
-
-This prints the log path and writes extra diagnostics to:
-
-```text
-%APPDATA%\librarian-save-swapper\logs\launcher.log
-```
-
-## Where Files Go
-
-Installed launcher files:
-
-```text
-%LOCALAPPDATA%\Programs\librarian-save-swapper
-```
-
-Profiles, backups, config, and logs:
-
-```text
-%APPDATA%\librarian-save-swapper
-```
-
-Managed profiles:
-
-```text
-%APPDATA%\librarian-save-swapper\profiles
-```
-
-Each profile keeps the newest five timestamped gameplay-save versions:
-
-```text
-%APPDATA%\librarian-save-swapper\profiles\<ProfileName>\2026-06-07_14-32-10\Sav.sav
-```
-
-Archived profiles:
-
-```text
-%APPDATA%\librarian-save-swapper\archives
-```
-
-Backups:
-
-```text
-%APPDATA%\librarian-save-swapper\backups
-```
-
-Game save folder:
-
-```text
-%LOCALAPPDATA%\Librarian\Saved\SaveGames
-```
-
-Per-profile gameplay file:
-
-```text
-Sav.sav
-```
-
-The launcher leaves `SystemSetting.sav` in the active save folder so graphics/audio/control settings stay global instead of moving between profiles.
-
-## Outside Launcher Play
-
-If the game was played through Steam or another shortcut, the active `Sav.sav` may be newer than the last profile version the launcher knows about.
-
-On startup, the launcher compares SHA-256 hashes for:
-
-```text
-%LOCALAPPDATA%\Librarian\Saved\SaveGames\Sav.sav
-```
-
-and the newest `Sav.sav` in the last active profile. If they differ, the launcher asks whether to:
-
-- update the last active profile with the current active save;
-- create a new profile from the current active save;
-- quit without changing anything.
-
-## Safety
-
-The launcher is designed to be conservative:
-
-- It refuses to swap profiles while `Librarian.exe` appears to be running.
-- It detects active-save/profile mismatches with SHA-256 before switching.
-- It backs up the full active save folder before switching profiles.
-- It keeps the latest five timestamped `Sav.sav` versions per profile.
-- It archives profiles instead of permanently deleting them.
-- It swaps only `Sav.sav` between profiles.
-- It keeps profiles and backups when uninstalling unless you explicitly type `DELETE`.
 
 ## Steam Cloud Warning
 
@@ -130,34 +38,45 @@ Steam Cloud may overwrite local files after the launcher swaps saves. For safest
 4. Open `General`.
 5. Turn off Steam Cloud for this game.
 
-This launcher does not automatically edit Steam Cloud settings.
-
-## Recover From A Backup
-
-Run `librarian`, choose `R`, and select a backup to restore. The launcher creates another backup before restoring.
-
-You can also manually inspect backups here:
-
-```text
-%APPDATA%\librarian-save-swapper\backups
-```
-
 ## Uninstall
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\librarian-save-swapper\uninstall.ps1"
 ```
 
-The uninstaller removes the `librarian` command and installed launcher files. It keeps profiles and backups by default.
+The uninstaller removes the `librarian` command and installed launcher files. It keeps profiles and backups by default. Check file locations below 
 
-## Known Limitations
+## Where Files Go
+Installed launcher files:
+```text
+%LOCALAPPDATA%\Programs\librarian-save-swapper
+```
 
-- Windows only.
-- Steam Cloud behavior is not controlled by the launcher.
-- The game save behavior is not fully known, so the launcher waits for the game process to exit before saving the selected profile.
-- The first version uses a simple number-based terminal menu.
+Profiles, backups, config, and logs:
+```text
+%APPDATA%\librarian-save-swapper
+```
+
+Managed profiles:
+```text
+%APPDATA%\librarian-save-swapper\profiles
+```
+
+Each profile keeps the newest five timestamped gameplay-save versions:
+```text
+%APPDATA%\librarian-save-swapper\profiles\<ProfileName>\2026-06-07_14-32-10\Sav.sav
+```
+
+Archived profiles:
+```text
+%APPDATA%\librarian-save-swapper\archives
+```
+
+Backups:
+```text
+%APPDATA%\librarian-save-swapper\backups
+```
 
 ## License
-
 Licensed under the MIT License.
 
