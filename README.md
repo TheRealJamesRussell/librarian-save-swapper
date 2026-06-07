@@ -10,7 +10,7 @@ As of June 2026, the game does not support multiple saves. It uses one active sa
 
 - 🕘 Keeps the latest 5 gameplay-save versions for each profile.
 
-- 🪶 Adds extremely low to no performance overhead.
+- ⚡ Adds extremely low to no performance overhead.
 
 ## Prerequisites
 
