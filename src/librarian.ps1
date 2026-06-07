@@ -117,9 +117,9 @@ function Test-DirectoryHasFiles {
 
 function Get-Profiles {
     if (-not (Test-Path -LiteralPath $ProfilesRoot)) {
-        return ,@()
+        return
     }
-    return ,@(Get-ChildItem -LiteralPath $ProfilesRoot -Directory | Sort-Object Name)
+    Get-ChildItem -LiteralPath $ProfilesRoot -Directory | Sort-Object Name
 }
 
 function Test-GameRunning {
@@ -746,10 +746,14 @@ function Resolve-SavePath {
     }
 
     if (-not (Test-Path -LiteralPath $savePath)) {
-        Write-Warn "Save folder does not exist yet:"
-        Write-Host $savePath
-        $answer = Read-Host "Create it now? [Y/N]"
-        if ($answer -notmatch "^[Yy]$") {
+        $createSaveFolder = Confirm-Interactive `
+            -Title "Save folder not found" `
+            -ConfirmLabel "Create save folder" `
+            -RenderHeader {
+                Write-Warn "The save folder does not exist yet."
+                Write-Muted $savePath
+            }
+        if (-not $createSaveFolder) {
             throw "Save folder is missing. Launch the game once or create the folder before switching profiles."
         }
         New-Item -ItemType Directory -Path $savePath -Force | Out-Null
@@ -771,9 +775,22 @@ function Initialize-FirstProfile {
     }
 
     if (Test-DirectoryHasFiles $SavePath) {
-        Write-Info "Found existing active save files, but no managed profiles yet."
-        $answer = Read-Host "Create a profile from the current save? [Y/N]"
-        if ($answer -match "^[Yy]$") {
+        $choices = @(
+            [pscustomobject]@{ Mode = "create"; Label = "Create profile from current save" },
+            [pscustomobject]@{ Mode = "skip"; Label = "Continue without creating a profile" }
+        )
+
+        $choice = Read-InteractiveChoice `
+            -Title "Existing active save found" `
+            -Items $choices `
+            -RenderHeader {
+                Write-Warn "Found existing active save files, but no managed profiles yet."
+                Write-Muted "Create a managed profile from the current save, or continue to the main menu."
+            } `
+            -RenderItem { param($item, $index) $item.Label } `
+            -AllowCancel
+
+        if ($null -ne $choice -and $choice.Mode -eq "create") {
             do {
                 $profileName = Read-RequiredValue "Profile name" "Main Playthrough"
                 if (-not (Test-SafeProfileName $profileName)) {
