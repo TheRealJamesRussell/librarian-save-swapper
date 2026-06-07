@@ -37,6 +37,15 @@ The first run will create launcher folders and ask what to do if it finds existi
 
 Menus support arrow-key navigation. Use `Up` and `Down` to highlight an option, press `Enter` to choose it, and press `Esc` to go back.
 
+## UI Rules
+
+- Use arrow keys to move, `Enter` to choose, and `Esc` to return to the previous menu.
+- Do not use shortcut letters or number-key selection in menus.
+- Keep disabled menu items visible in gray, but do not allow them to be selected.
+- Keep the main menu stable: show `Play profile: <name>` for the primary profile and `Pick Other Profile` for profile switching.
+- Enable `Pick Other Profile` only when at least one other profile exists.
+- Only ask for typed input when the user is naming or renaming a profile.
+
 The launcher starts the game through Steam by default using Steam App ID `4197610`, so Steam playtime and Steam overlay behavior should work normally.
 
 Main actions:
@@ -125,7 +134,7 @@ Safety backups:
 
 The launcher keeps only the newest five safety backups. Older backup folders are removed automatically.
 
-Deleted profiles are moved to the Windows Recycle Bin, not to a separate archive folder. Restore them from the Recycle Bin if needed, or empty the Recycle Bin to remove them permanently.
+Deleted profiles are moved to the Recycle Bin, not to a separate archive folder. Restore them from the Recycle Bin if needed, or empty the Recycle Bin to remove them permanently.
 
 ## License
 

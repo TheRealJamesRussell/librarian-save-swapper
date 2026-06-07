@@ -173,7 +173,9 @@ function Read-InteractiveChoice {
             [bool]$IsSelected
         )
 
-        $label = & $RenderItem $Items[$Index] $Index
+        $item = $Items[$Index]
+        $label = & $RenderItem $item $Index
+        $isDisabled = $item.PSObject.Properties.Name.Contains("Disabled") -and $item.Disabled
         $availableWidth = [Math]::Max(20, [Console]::WindowWidth - 1)
         $text = if ($IsSelected) { " > {0}" -f $label } else { "   {0}" -f $label }
         if ($text.Length -gt $availableWidth) {
@@ -183,12 +185,24 @@ function Read-InteractiveChoice {
 
         if ($IsSelected) {
             Write-Host $text -ForegroundColor Black -BackgroundColor Cyan
+        } elseif ($isDisabled) {
+            Write-Host $text -ForegroundColor DarkGray
         } else {
             Write-Host $text -ForegroundColor White
         }
     }
 
     $selected = 0
+    while (
+        $selected -lt $Items.Count -and
+        $Items[$selected].PSObject.Properties.Name.Contains("Disabled") -and
+        $Items[$selected].Disabled
+    ) {
+        $selected++
+    }
+    if ($selected -ge $Items.Count) {
+        $selected = 0
+    }
     [Console]::CursorVisible = $false
     Clear-Host
     Show-Header
@@ -209,22 +223,55 @@ function Read-InteractiveChoice {
         $previous = $selected
         switch ($key.Key) {
             "UpArrow" {
-                if ($selected -le 0) {
-                    $selected = $Items.Count - 1
-                } else {
-                    $selected--
-                }
+                do {
+                    if ($selected -le 0) {
+                        $selected = $Items.Count - 1
+                    } else {
+                        $selected--
+                    }
+                    $isDisabled = $Items[$selected].PSObject.Properties.Name.Contains("Disabled") -and $Items[$selected].Disabled
+                } while ($isDisabled -and $selected -ne $previous)
             }
             "DownArrow" {
-                if ($selected -ge ($Items.Count - 1)) {
-                    $selected = 0
-                } else {
+                do {
+                    if ($selected -ge ($Items.Count - 1)) {
+                        $selected = 0
+                    } else {
+                        $selected++
+                    }
+                    $isDisabled = $Items[$selected].PSObject.Properties.Name.Contains("Disabled") -and $Items[$selected].Disabled
+                } while ($isDisabled -and $selected -ne $previous)
+            }
+            "Home" {
+                $selected = 0
+                while (
+                    $selected -lt $Items.Count -and
+                    $Items[$selected].PSObject.Properties.Name.Contains("Disabled") -and
+                    $Items[$selected].Disabled
+                ) {
                     $selected++
                 }
+                if ($selected -ge $Items.Count) {
+                    $selected = $previous
+                }
             }
-            "Home" { $selected = 0 }
-            "End" { $selected = $Items.Count - 1 }
+            "End" {
+                $selected = $Items.Count - 1
+                while (
+                    $selected -ge 0 -and
+                    $Items[$selected].PSObject.Properties.Name.Contains("Disabled") -and
+                    $Items[$selected].Disabled
+                ) {
+                    $selected--
+                }
+                if ($selected -lt 0) {
+                    $selected = $previous
+                }
+            }
             "Enter" {
+                if ($Items[$selected].PSObject.Properties.Name.Contains("Disabled") -and $Items[$selected].Disabled) {
+                    break
+                }
                 [Console]::CursorVisible = $true
                 return $Items[$selected]
             }
@@ -872,7 +919,7 @@ function Rename-Profile {
     }
     Write-Log "Renamed profile '$($profile.Name)' to '$newName'."
     Write-Info "Renamed profile to '$newName'."
-    return $true
+    return $false
 }
 
 function Move-DirectoryToRecycleBin {
@@ -900,9 +947,9 @@ function Delete-Profile {
 
     $confirm = Confirm-Interactive `
         -Title "Delete profile?" `
-        -ConfirmLabel "Move '$($profile.Name)' to the Windows Recycle Bin" `
+        -ConfirmLabel "Move '$($profile.Name)' to the Recycle Bin" `
         -RenderHeader {
-            Write-Warn "This moves the profile to the Windows Recycle Bin."
+            Write-Warn "This moves the profile to the Recycle Bin."
             Write-Muted "You can restore it from there, or empty the Recycle Bin to remove it permanently."
         }
     if (-not $confirm) {
@@ -914,8 +961,8 @@ function Delete-Profile {
         $Config.lastActiveProfile = $null
         Save-Config $Config
     }
-    Write-Log "Moved profile '$($profile.Name)' to the Windows Recycle Bin."
-    Write-Info "Moved profile '$($profile.Name)' to the Windows Recycle Bin."
+    Write-Log "Moved profile '$($profile.Name)' to the Recycle Bin."
+    Write-Info "Moved profile '$($profile.Name)' to the Recycle Bin."
     return $true
 }
 
@@ -1158,6 +1205,20 @@ function Show-Header {
     Write-Host ""
 }
 
+function Choose-OtherProfile {
+    param([array]$Profiles)
+
+    if ($Profiles.Count -eq 0) {
+        return $null
+    }
+
+    return Read-InteractiveChoice `
+        -Title "Pick other profile" `
+        -Items $Profiles `
+        -RenderItem { param($item, $index) $item.Name } `
+        -AllowCancel
+}
+
 function Show-Menu {
     param(
         [object]$Config,
@@ -1165,17 +1226,44 @@ function Show-Menu {
     )
 
     while ($true) {
-        $profiles = Get-Profiles
+        $profiles = @(Get-Profiles)
         $menuItems = @()
-        foreach ($profile in $profiles) {
+
+        $primaryProfile = $null
+        if (-not [string]::IsNullOrWhiteSpace($Config.lastActiveProfile)) {
+            $primaryProfile = $profiles | Where-Object { $_.Name -eq $Config.lastActiveProfile } | Select-Object -First 1
+        }
+        if ($null -eq $primaryProfile -and $profiles.Count -gt 0) {
+            $primaryProfile = $profiles[0]
+        }
+
+        if ($null -eq $primaryProfile) {
             $menuItems += [pscustomobject]@{
                 Kind = "profile"
                 Key = ""
-                Label = $profile.Name
-                Profile = $profile
+                Label = "Play profile: none"
+                Profile = $null
+                Disabled = $true
+            }
+        } else {
+            $menuItems += [pscustomobject]@{
+                Kind = "profile"
+                Key = ""
+                Label = "Play profile: $($primaryProfile.Name)"
+                Profile = $primaryProfile
+                Disabled = $false
             }
         }
 
+        $otherProfiles = @($profiles | Where-Object { $null -eq $primaryProfile -or $_.Name -ne $primaryProfile.Name })
+        $menuItems += [pscustomobject]@{
+            Kind = "action"
+            Key = "O"
+            Label = "Pick Other Profile"
+            Profile = $null
+            OtherProfiles = $otherProfiles
+            Disabled = ($otherProfiles.Count -eq 0)
+        }
         $menuItems += [pscustomobject]@{ Kind = "action"; Key = "C"; Label = "Capture current save"; Profile = $null }
         $menuItems += [pscustomobject]@{ Kind = "action"; Key = "S"; Label = "Start new playthrough"; Profile = $null }
         $menuItems += [pscustomobject]@{ Kind = "action"; Key = "E"; Label = "Rename profile"; Profile = $null }
@@ -1196,11 +1284,7 @@ function Show-Menu {
             } `
             -RenderItem {
                 param($item, $index)
-                if ($item.Kind -eq "profile") {
-                    "Play profile: $($item.Label)"
-                } else {
-                    $item.Label
-                }
+                $item.Label
             } `
             -AllowCancel
 
@@ -1209,6 +1293,9 @@ function Show-Menu {
         }
 
         if ($selected.Kind -eq "profile") {
+            if ($null -eq $selected.Profile) {
+                continue
+            }
             $didWork = Start-SelectedProfile -Config $Config -SavePath $SavePath -ProfileName $selected.Profile.Name
             if ($didWork) {
                 Pause
@@ -1219,6 +1306,12 @@ function Show-Menu {
         $didWork = $false
         switch ($selected.Key) {
             "Q" { return }
+            "O" {
+                $otherProfile = Choose-OtherProfile -Profiles $selected.OtherProfiles
+                if ($null -ne $otherProfile) {
+                    $didWork = Start-SelectedProfile -Config $Config -SavePath $SavePath -ProfileName $otherProfile.Name
+                }
+            }
             "C" { $didWork = Save-CurrentSave -Config $Config -SavePath $SavePath }
             "S" { $didWork = Start-NewPlaythrough -Config $Config -SavePath $SavePath }
             "E" { $didWork = Rename-Profile -Config $Config }
