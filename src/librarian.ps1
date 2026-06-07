@@ -158,7 +158,7 @@ function Read-InteractiveChoice {
         [string]$Title,
         [array]$Items,
         [scriptblock]$RenderItem,
-        [string]$HelpText = "Use Up/Down, Enter to select, Esc to cancel.",
+        [string]$HelpText = "Use Up/Down, Enter to select, Esc to go back.",
         [scriptblock]$RenderHeader = $null,
         [switch]$AllowCancel
     )
@@ -234,30 +234,6 @@ function Read-InteractiveChoice {
                     return $null
                 }
             }
-            default {
-                if ($key.KeyChar) {
-                    foreach ($i in 0..($Items.Count - 1)) {
-                        $item = $Items[$i]
-                        if ($item.PSObject.Properties.Name.Contains("Key") -and -not [string]::IsNullOrWhiteSpace($item.Key)) {
-                            if ([string]::Equals([string]$key.KeyChar, [string]$item.Key, [System.StringComparison]::OrdinalIgnoreCase)) {
-                                [Console]::CursorVisible = $true
-                                return $item
-                            }
-                        }
-                    }
-                }
-
-                if ($key.KeyChar -and $key.KeyChar -match "^[0-9]$") {
-                    $index = [int]::Parse([string]$key.KeyChar) - 1
-                    if ($index -ge 0 -and $index -lt $Items.Count) {
-                        $item = $Items[$index]
-                        if (-not ($item.PSObject.Properties.Name.Contains("Kind") -and $item.Kind -eq "action")) {
-                            [Console]::CursorVisible = $true
-                            return $item
-                        }
-                    }
-                }
-            }
         }
 
         if ($previous -ne $selected) {
@@ -268,6 +244,29 @@ function Read-InteractiveChoice {
             [Console]::SetCursorPosition(0, $itemsTop + $Items.Count)
         }
     }
+}
+
+function Confirm-Interactive {
+    param(
+        [string]$Title,
+        [string]$ConfirmLabel,
+        [string]$CancelLabel = "Cancel",
+        [scriptblock]$RenderHeader = $null
+    )
+
+    $choices = @(
+        [pscustomobject]@{ Value = $false; Label = $CancelLabel },
+        [pscustomobject]@{ Value = $true; Label = $ConfirmLabel }
+    )
+
+    $choice = Read-InteractiveChoice `
+        -Title $Title `
+        -Items $choices `
+        -RenderHeader $RenderHeader `
+        -RenderItem { param($item, $index) $item.Label } `
+        -AllowCancel
+
+    return ($null -ne $choice -and $choice.Value)
 }
 
 function Test-SafeProfileName {
@@ -666,8 +665,10 @@ function Initialize-FirstProfile {
             $Config.lastActiveProfile = $profileName
             Save-Config $Config
             Write-Info "Created profile '$profileName'."
+            return $true
         }
     }
+    return $false
 }
 
 function New-ProfileFromCurrentSave {
@@ -695,6 +696,7 @@ function New-ProfileFromCurrentSave {
     $Config.lastActiveProfile = $profileName
     Save-Config $Config
     Write-Info "Created profile '$profileName' from the current save."
+    return $true
 }
 
 function Read-NewProfileName {
@@ -755,36 +757,35 @@ function Resolve-ActiveSaveMismatch {
     Write-Host ""
     Write-Warn "The active game save differs from the last active profile: $($Config.lastActiveProfile)"
     Write-Host "This usually means the game was played outside this launcher."
-    Write-Host ""
-    Write-Host "Choose what to do with the current active save:"
-    Write-Host "  [U] Update $($Config.lastActiveProfile) with the current active save"
-    Write-Host "  [N] Create a new profile from the current active save"
-    Write-Host "  [Q] Quit without changing anything"
 
-    while ($true) {
-        $choice = Read-Host "Choose"
-        switch -Regex ($choice) {
-            "^[Uu]$" {
-                Write-DebugLog "User chose to update last active profile after hash mismatch."
-                Backup-Directory -Source $SavePath -Reason "before-active-mismatch-update" | Out-Null
-                Save-ActiveToProfile -SavePath $SavePath -ProfileName $Config.lastActiveProfile
-                Save-Config $Config
-                Write-Info "Updated '$($Config.lastActiveProfile)' with the current active save."
-                return
-            }
-            "^[Nn]$" {
-                Write-DebugLog "User chose to create a new profile after hash mismatch."
-                New-ProfileFromCurrentSave -Config $Config -SavePath $SavePath
-                return
-            }
-            "^[Qq]$" {
-                Write-DebugLog "User quit after hash mismatch prompt."
-                Write-Info "No profile was changed."
-                exit 0
-            }
-            default {
-                Write-Warn "Choose U, N, or Q."
-            }
+    $choices = @(
+        [pscustomobject]@{ Mode = "update"; Label = "Update $($Config.lastActiveProfile) with the current active save" },
+        [pscustomobject]@{ Mode = "new"; Label = "Create a new profile from the current active save" },
+        [pscustomobject]@{ Mode = "quit"; Label = "Quit without changing anything" }
+    )
+    $choice = Read-InteractiveChoice `
+        -Title "Choose what to do with the current active save" `
+        -Items $choices `
+        -RenderItem { param($item, $index) $item.Label }
+
+    switch ($choice.Mode) {
+        "update" {
+            Write-DebugLog "User chose to update last active profile after hash mismatch."
+            Backup-Directory -Source $SavePath -Reason "before-active-mismatch-update" | Out-Null
+            Save-ActiveToProfile -SavePath $SavePath -ProfileName $Config.lastActiveProfile
+            Save-Config $Config
+            Write-Info "Updated '$($Config.lastActiveProfile)' with the current active save."
+            return
+        }
+        "new" {
+            Write-DebugLog "User chose to create a new profile after hash mismatch."
+            New-ProfileFromCurrentSave -Config $Config -SavePath $SavePath | Out-Null
+            return
+        }
+        "quit" {
+            Write-DebugLog "User quit after hash mismatch prompt."
+            Write-Info "No profile was changed."
+            exit 0
         }
     }
 }
@@ -796,35 +797,35 @@ function Save-CurrentSave {
     )
 
     $choices = @(
-        [pscustomobject]@{ Key = "N"; Label = "Create new profile from current save"; Mode = "new" },
-        [pscustomobject]@{ Key = "U"; Label = "Update existing profile with current save"; Mode = "update" },
-        [pscustomobject]@{ Key = "Q"; Label = "Cancel"; Mode = "cancel" }
+        [pscustomobject]@{ Label = "Create new profile from current save"; Mode = "new" },
+        [pscustomobject]@{ Label = "Update existing profile with current save"; Mode = "update" },
+        [pscustomobject]@{ Label = "Cancel"; Mode = "cancel" }
     )
 
     $choice = Read-InteractiveChoice `
         -Title "Capture current save" `
         -Items $choices `
-        -RenderItem { param($item, $index) "[$($item.Key)] $($item.Label)" } `
+        -RenderItem { param($item, $index) $item.Label } `
         -AllowCancel
 
     if ($null -eq $choice -or $choice.Mode -eq "cancel") {
-        return
+        return $false
     }
 
     if ($choice.Mode -eq "new") {
-        New-ProfileFromCurrentSave -Config $Config -SavePath $SavePath
-        return
+        return (New-ProfileFromCurrentSave -Config $Config -SavePath $SavePath)
     }
 
-    $profile = Choose-Profile -Prompt "Choose a profile to update, or Esc to cancel"
+    $profile = Choose-Profile -Prompt "Choose a profile to update"
     if ($null -eq $profile) {
-        return
+        return $false
     }
     Backup-Directory -Source $SavePath -Reason "before-manual-profile-backup" | Out-Null
     Save-ActiveToProfile -SavePath $SavePath -ProfileName $profile.Name
     $Config.lastActiveProfile = $profile.Name
     Save-Config $Config
     Write-Info "Saved current active save into '$($profile.Name)'."
+    return $true
 }
 
 function Choose-Profile {
@@ -839,16 +840,16 @@ function Choose-Profile {
     return Read-InteractiveChoice `
         -Title $Prompt `
         -Items $profiles `
-        -RenderItem { param($item, $index) "[{0}] {1}" -f ($index + 1), $item.Name } `
+        -RenderItem { param($item, $index) $item.Name } `
         -AllowCancel
 }
 
 function Rename-Profile {
     param([object]$Config)
 
-    $profile = Choose-Profile -Prompt "Choose a profile number to rename, or Q to cancel"
+    $profile = Choose-Profile -Prompt "Choose a profile to rename"
     if ($null -eq $profile) {
-        return
+        return $false
     }
 
     do {
@@ -871,6 +872,7 @@ function Rename-Profile {
     }
     Write-Log "Renamed profile '$($profile.Name)' to '$newName'."
     Write-Info "Renamed profile to '$newName'."
+    return $true
 }
 
 function Move-DirectoryToRecycleBin {
@@ -891,17 +893,20 @@ function Move-DirectoryToRecycleBin {
 function Delete-Profile {
     param([object]$Config)
 
-    $profile = Choose-Profile -Prompt "Choose a profile number to delete, or Q to cancel"
+    $profile = Choose-Profile -Prompt "Choose a profile to delete"
     if ($null -eq $profile) {
-        return
+        return $false
     }
 
-    Write-Warn "This moves the profile to the Windows Recycle Bin."
-    Write-Warn "You can restore it from there, or empty the Recycle Bin to remove it permanently."
-    $confirm = Read-Host "Type DELETE to continue"
-    if ($confirm -ne "DELETE") {
-        Write-Info "Delete cancelled."
-        return
+    $confirm = Confirm-Interactive `
+        -Title "Delete profile?" `
+        -ConfirmLabel "Move '$($profile.Name)' to the Windows Recycle Bin" `
+        -RenderHeader {
+            Write-Warn "This moves the profile to the Windows Recycle Bin."
+            Write-Muted "You can restore it from there, or empty the Recycle Bin to remove it permanently."
+        }
+    if (-not $confirm) {
+        return $false
     }
 
     Move-DirectoryToRecycleBin -Path $profile.FullName
@@ -911,6 +916,7 @@ function Delete-Profile {
     }
     Write-Log "Moved profile '$($profile.Name)' to the Windows Recycle Bin."
     Write-Info "Moved profile '$($profile.Name)' to the Windows Recycle Bin."
+    return $true
 }
 
 function Restore-ProfileVersion {
@@ -919,32 +925,36 @@ function Restore-ProfileVersion {
         [string]$SavePath
     )
 
-    $profile = Choose-Profile -Prompt "Choose a profile to restore from, or Q to cancel"
+    $profile = Choose-Profile -Prompt "Choose a profile to restore from"
     if ($null -eq $profile) {
-        return
+        return $false
     }
 
     $versions = @(Get-ProfileVersionDirectories -ProfilePath $profile.FullName)
     if ($versions.Count -eq 0) {
         Write-Warn "That profile has no saved versions."
-        return
+        return $true
     }
 
     $selectedVersion = Read-InteractiveChoice `
         -Title "Restore profile version" `
         -Items $versions `
         -RenderHeader { Write-Host "Profile: $($profile.Name)" -ForegroundColor Yellow } `
-        -RenderItem { param($item, $index) "[{0}] {1}" -f ($index + 1), $item.Name } `
+        -RenderItem { param($item, $index) $item.Name } `
         -AllowCancel
 
     if ($null -eq $selectedVersion) {
-        return
+        return $false
     }
 
-    $confirm = Read-Host "Restore this version? This backs up the active save first. Type RESTORE to continue"
-    if ($confirm -ne "RESTORE") {
-        Write-Info "Restore cancelled."
-        return
+    $confirm = Confirm-Interactive `
+        -Title "Restore this version?" `
+        -ConfirmLabel "Restore $($profile.Name) version $($selectedVersion.Name)" `
+        -RenderHeader {
+            Write-Warn "The active save will be backed up first."
+        }
+    if (-not $confirm) {
+        return $false
     }
 
     Backup-Directory -Source $SavePath -Reason "before-restore" | Out-Null
@@ -956,6 +966,7 @@ function Restore-ProfileVersion {
     Save-Config $Config
     Write-Log "Restored profile '$($profile.Name)' version '$($selectedVersion.Name)' to active save folder."
     Write-Info "Restored '$($profile.Name)' version '$($selectedVersion.Name)'."
+    return $true
 }
 
 function Start-SelectedProfile {
@@ -967,7 +978,7 @@ function Start-SelectedProfile {
 
     if (Test-GameRunning) {
         Write-Warn "The game appears to be running. Close it before switching save profiles."
-        return
+        return $false
     }
 
     Write-Info "Backing up current save..."
@@ -994,6 +1005,7 @@ function Start-SelectedProfile {
         Save-Config $Config
         Write-Info "Done."
     }
+    return $true
 }
 
 function Start-NewPlaythrough {
@@ -1004,18 +1016,21 @@ function Start-NewPlaythrough {
 
     if (Test-GameRunning) {
         Write-Warn "The game appears to be running. Close it before starting a new playthrough."
-        return
+        return $false
     }
 
     $profileName = Read-NewProfileName -Prompt "New playthrough profile name"
     $activeSaveFile = Join-Path $SavePath $GameplaySaveFileName
 
-    Write-Warn "This starts the game without an existing $GameplaySaveFileName."
-    Write-Warn "The current active save is backed up first."
-    $confirm = Read-Host "Type START to continue"
-    if ($confirm -ne "START") {
-        Write-Info "New playthrough cancelled."
-        return
+    $confirm = Confirm-Interactive `
+        -Title "Start new playthrough?" `
+        -ConfirmLabel "Back up current save and start new playthrough" `
+        -RenderHeader {
+            Write-Warn "This starts the game without an existing $GameplaySaveFileName."
+            Write-Muted "The current active save is backed up first."
+        }
+    if (-not $confirm) {
+        return $false
     }
 
     Backup-Directory -Source $SavePath -Reason "before-new-playthrough" | Out-Null
@@ -1050,6 +1065,7 @@ function Start-NewPlaythrough {
             Write-Log "No $GameplaySaveFileName found after new playthrough '$profileName' exited."
         }
     }
+    return $true
 }
 
 function Show-Header {
@@ -1096,7 +1112,7 @@ function Show-Menu {
         $selected = Read-InteractiveChoice `
             -Title "Main menu" `
             -Items $menuItems `
-            -HelpText "Use Up/Down, Enter to select. Number keys select profiles." `
+            -HelpText "Use Up/Down, Enter to select, Esc to quit." `
             -RenderHeader {
                 if ([string]::IsNullOrWhiteSpace($Config.lastActiveProfile)) {
                     Write-Host "Active profile: none" -ForegroundColor DarkGray
@@ -1107,31 +1123,43 @@ function Show-Menu {
             -RenderItem {
                 param($item, $index)
                 if ($item.Kind -eq "profile") {
-                    "[{0}] Play profile: {1}" -f ($index + 1), $item.Label
+                    "Play profile: $($item.Label)"
                 } else {
-                    "[$($item.Key)] $($item.Label)"
+                    $item.Label
                 }
-            }
+            } `
+            -AllowCancel
+
+        if ($null -eq $selected) {
+            return
+        }
 
         if ($selected.Kind -eq "profile") {
-            Start-SelectedProfile -Config $Config -SavePath $SavePath -ProfileName $selected.Profile.Name
-            Pause
+            $didWork = Start-SelectedProfile -Config $Config -SavePath $SavePath -ProfileName $selected.Profile.Name
+            if ($didWork) {
+                Pause
+            }
             continue
         }
 
+        $didWork = $false
         switch ($selected.Key) {
             "Q" { return }
-            "C" { Save-CurrentSave -Config $Config -SavePath $SavePath; Pause; continue }
-            "S" { Start-NewPlaythrough -Config $Config -SavePath $SavePath; Pause; continue }
-            "E" { Rename-Profile -Config $Config; Pause; continue }
-            "D" { Delete-Profile -Config $Config; Pause; continue }
-            "R" { Restore-ProfileVersion -Config $Config -SavePath $SavePath; Pause; continue }
+            "C" { $didWork = Save-CurrentSave -Config $Config -SavePath $SavePath }
+            "S" { $didWork = Start-NewPlaythrough -Config $Config -SavePath $SavePath }
+            "E" { $didWork = Rename-Profile -Config $Config }
+            "D" { $didWork = Delete-Profile -Config $Config }
+            "R" { $didWork = Restore-ProfileVersion -Config $Config -SavePath $SavePath }
             default {
                 Write-Warn "Invalid choice."
-                Pause
-                continue
+                $didWork = $true
             }
         }
+
+        if ($didWork) {
+            Pause
+        }
+        continue
     }
 }
 
