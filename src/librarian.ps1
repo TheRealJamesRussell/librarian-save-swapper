@@ -943,6 +943,22 @@ function Start-NewPlaythrough {
     }
 }
 
+function Show-Header {
+    $title = @(
+        " __    _ _               _            _____                _____                           ",
+        "|  |  |_| |_ ___ ___ ___|_|___ ___   |   __|___ _ _ ___   |   __|_ _ _ ___ ___ ___ ___ ___ ",
+        "|  |__| | . |  _| .'|  _| | .'|   |  |__   | .'| | | -_|  |__   | | | | .'| . | . | -_|  _|",
+        "|_____|_|___|_| |__,|_| |_|__,|_|_|  |_____|__,|\_/|___|  |_____|_____|__,|  _|  _|___|_|  ",
+        "                                                                          |_| |_|          "
+    )
+
+    foreach ($line in $title) {
+        Write-Host $line -ForegroundColor Cyan
+    }
+    Write-Host ("-" * 92) -ForegroundColor DarkGray
+    Write-Host ""
+}
+
 function Show-Menu {
     param(
         [object]$Config,
@@ -952,8 +968,7 @@ function Show-Menu {
     while ($true) {
         $profiles = Get-Profiles
         Clear-Host
-        Write-Host "Librarian Save Swapper"
-        Write-Host ""
+        Show-Header
         Write-Host "Active profile: $($Config.lastActiveProfile)"
         Write-Host ""
         Write-Host "Profiles:"
