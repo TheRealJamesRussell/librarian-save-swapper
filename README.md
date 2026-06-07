@@ -80,11 +80,28 @@ Sav.sav
 
 The launcher leaves `SystemSetting.sav` in the active save folder so graphics/audio/control settings stay global instead of moving between profiles.
 
+## Outside Launcher Play
+
+If the game was played through Steam or another shortcut, the active `Sav.sav` may be newer than the last profile version the launcher knows about.
+
+On startup, the launcher compares SHA-256 hashes for:
+
+```text
+%LOCALAPPDATA%\Librarian\Saved\SaveGames\Sav.sav
+```
+
+and the newest `Sav.sav` in the last active profile. If they differ, the launcher asks whether to:
+
+- update the last active profile with the current active save;
+- create a new profile from the current active save;
+- quit without changing anything.
+
 ## Safety
 
 The launcher is designed to be conservative:
 
 - It refuses to swap profiles while `Librarian.exe` appears to be running.
+- It detects active-save/profile mismatches with SHA-256 before switching.
 - It backs up the full active save folder before switching profiles.
 - It keeps the latest five timestamped `Sav.sav` versions per profile.
 - It archives profiles instead of permanently deleting them.

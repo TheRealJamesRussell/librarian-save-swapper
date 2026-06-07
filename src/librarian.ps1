@@ -236,6 +236,16 @@ function Backup-Directory {
     return $backupPath
 }
 
+function Get-SaveHash {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $null
+    }
+
+    return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash
+}
+
 function Get-ProfileVersionDirectories {
     param([string]$ProfilePath)
 
@@ -292,6 +302,16 @@ function Save-ActiveToProfile {
     $activeSaveFile = Join-Path $SavePath $GameplaySaveFileName
     if (-not (Test-Path -LiteralPath $activeSaveFile)) {
         throw "Could not find gameplay save file: $activeSaveFile"
+    }
+
+    $latestProfileSaveFile = Get-LatestProfileSaveFile -ProfilePath $profilePath
+    if (-not [string]::IsNullOrWhiteSpace($latestProfileSaveFile)) {
+        $activeHash = Get-SaveHash -Path $activeSaveFile
+        $profileHash = Get-SaveHash -Path $latestProfileSaveFile
+        if ($activeHash -eq $profileHash) {
+            Write-Log "Skipped saving profile '$ProfileName' because active $GameplaySaveFileName is unchanged."
+            return
+        }
     }
 
     New-Item -ItemType Directory -Path $profilePath -Force | Out-Null
@@ -429,6 +449,74 @@ function New-ProfileFromCurrentSave {
     $Config.lastActiveProfile = $profileName
     Save-Config $Config
     Write-Info "Created profile '$profileName' from the current save."
+}
+
+function Resolve-ActiveSaveMismatch {
+    param(
+        [object]$Config,
+        [string]$SavePath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Config.lastActiveProfile)) {
+        return
+    }
+
+    $activeSaveFile = Join-Path $SavePath $GameplaySaveFileName
+    if (-not (Test-Path -LiteralPath $activeSaveFile)) {
+        return
+    }
+
+    $lastProfilePath = Join-Path $ProfilesRoot $Config.lastActiveProfile
+    if (-not (Test-Path -LiteralPath $lastProfilePath)) {
+        return
+    }
+
+    $latestProfileSaveFile = Get-LatestProfileSaveFile -ProfilePath $lastProfilePath
+    if ([string]::IsNullOrWhiteSpace($latestProfileSaveFile)) {
+        return
+    }
+
+    $activeHash = Get-SaveHash -Path $activeSaveFile
+    $profileHash = Get-SaveHash -Path $latestProfileSaveFile
+    if ($activeHash -eq $profileHash) {
+        return
+    }
+
+    Write-Host ""
+    Write-Warn "The active game save differs from the last active profile: $($Config.lastActiveProfile)"
+    Write-Host "This usually means the game was played outside this launcher."
+    Write-Host ""
+    Write-Host "Active save SHA-256:  $activeHash"
+    Write-Host "Profile save SHA-256: $profileHash"
+    Write-Host ""
+    Write-Host "Choose how to handle the current active save before switching profiles:"
+    Write-Host "  [U] Update $($Config.lastActiveProfile) with the current active save"
+    Write-Host "  [N] Create a new profile from the current active save"
+    Write-Host "  [Q] Quit without changing anything"
+
+    while ($true) {
+        $choice = Read-Host "Choose"
+        switch -Regex ($choice) {
+            "^[Uu]$" {
+                Backup-Directory -Source $SavePath -Reason "before-active-mismatch-update" | Out-Null
+                Save-ActiveToProfile -SavePath $SavePath -ProfileName $Config.lastActiveProfile
+                Save-Config $Config
+                Write-Info "Updated '$($Config.lastActiveProfile)' with the current active save."
+                return
+            }
+            "^[Nn]$" {
+                New-ProfileFromCurrentSave -Config $Config -SavePath $SavePath
+                return
+            }
+            "^[Qq]$" {
+                Write-Info "No profile was changed."
+                exit 0
+            }
+            default {
+                Write-Warn "Choose U, N, or Q."
+            }
+        }
+    }
 }
 
 function Backup-CurrentSave {
@@ -684,6 +772,7 @@ if (-not $SkipMain) {
         $config = Load-Config
         $savePath = Resolve-SavePath -Config $config
         Initialize-FirstProfile -Config $config -SavePath $savePath
+        Resolve-ActiveSaveMismatch -Config $config -SavePath $savePath
         $gameExe = Resolve-GameExe -Config $config
 
         Write-Warn "Steam Cloud warning: for safest profile switching, disable Steam Cloud for this game in Steam if it is available."
