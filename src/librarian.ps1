@@ -301,6 +301,42 @@ function Get-LatestProfileSaveFile {
     return $null
 }
 
+function New-ProfileVersionFromSaveFile {
+    param(
+        [string]$SourceSaveFile,
+        [string]$ProfileName
+    )
+
+    if (-not (Test-SafeProfileName $ProfileName)) {
+        throw "Profile name '$ProfileName' is not safe."
+    }
+
+    if (-not (Test-Path -LiteralPath $SourceSaveFile)) {
+        throw "Could not find gameplay save file: $SourceSaveFile"
+    }
+
+    $profilePath = Join-Path $ProfilesRoot $ProfileName
+    New-Item -ItemType Directory -Path $profilePath -Force | Out-Null
+
+    $latestProfileSaveFile = Get-LatestProfileSaveFile -ProfilePath $profilePath
+    if (-not [string]::IsNullOrWhiteSpace($latestProfileSaveFile)) {
+        $sourceHash = Get-SaveHash -Path $SourceSaveFile
+        $profileHash = Get-SaveHash -Path $latestProfileSaveFile
+        Write-DebugLog "Source hash '$sourceHash'; latest profile hash '$profileHash'."
+        if ($sourceHash -eq $profileHash) {
+            Write-Log "Skipped saving profile '$ProfileName' because $GameplaySaveFileName is unchanged."
+            return $null
+        }
+    }
+
+    $versionPath = New-UniqueChildDirectory -Parent $profilePath -BaseName (New-VersionName)
+    Copy-Item -LiteralPath $SourceSaveFile -Destination (Join-Path $versionPath $GameplaySaveFileName) -Force
+    Remove-OldProfileVersions -ProfilePath $profilePath
+    Write-DebugLog "Created profile version '$versionPath'."
+    Write-Log "Saved gameplay save to profile '$ProfileName' version '$versionPath'."
+    return $versionPath
+}
+
 function Remove-OldProfileVersions {
     param([string]$ProfilePath)
 
@@ -328,27 +364,7 @@ function Save-ActiveToProfile {
     $profilePath = Join-Path $ProfilesRoot $ProfileName
     $activeSaveFile = Join-Path $SavePath $GameplaySaveFileName
     Write-DebugLog "Saving active save '$activeSaveFile' into profile '$ProfileName'."
-    if (-not (Test-Path -LiteralPath $activeSaveFile)) {
-        throw "Could not find gameplay save file: $activeSaveFile"
-    }
-
-    $latestProfileSaveFile = Get-LatestProfileSaveFile -ProfilePath $profilePath
-    if (-not [string]::IsNullOrWhiteSpace($latestProfileSaveFile)) {
-        $activeHash = Get-SaveHash -Path $activeSaveFile
-        $profileHash = Get-SaveHash -Path $latestProfileSaveFile
-        Write-DebugLog "Active hash '$activeHash'; latest profile hash '$profileHash'."
-        if ($activeHash -eq $profileHash) {
-            Write-Log "Skipped saving profile '$ProfileName' because active $GameplaySaveFileName is unchanged."
-            return
-        }
-    }
-
-    New-Item -ItemType Directory -Path $profilePath -Force | Out-Null
-    $versionPath = New-UniqueChildDirectory -Parent $profilePath -BaseName (New-VersionName)
-    Copy-Item -LiteralPath $activeSaveFile -Destination (Join-Path $versionPath $GameplaySaveFileName) -Force
-    Remove-OldProfileVersions -ProfilePath $profilePath
-    Write-DebugLog "Created profile version '$versionPath'."
-    Write-Log "Saved active gameplay save to profile '$ProfileName' version '$versionPath'."
+    New-ProfileVersionFromSaveFile -SourceSaveFile $activeSaveFile -ProfileName $ProfileName | Out-Null
 }
 
 function Load-ProfileToActive {
@@ -483,6 +499,25 @@ function New-ProfileFromCurrentSave {
     Write-Info "Created profile '$profileName' from the current save."
 }
 
+function Read-NewProfileName {
+    param([string]$Prompt = "New profile name")
+
+    do {
+        $profileName = Read-RequiredValue $Prompt
+        if (-not (Test-SafeProfileName $profileName)) {
+            Write-Warn "Use a normal folder-safe profile name."
+            continue
+        }
+        $profilePath = Join-Path $ProfilesRoot $profileName
+        if (Test-Path -LiteralPath $profilePath) {
+            Write-Warn "That profile already exists."
+            $profileName = ""
+        }
+    } while (-not (Test-SafeProfileName $profileName))
+
+    return $profileName
+}
+
 function Resolve-ActiveSaveMismatch {
     param(
         [object]$Config,
@@ -557,10 +592,21 @@ function Resolve-ActiveSaveMismatch {
 }
 
 function Backup-CurrentSave {
-    param([string]$SavePath)
-    $backupPath = Backup-Directory -Source $SavePath -Reason "manual"
-    Write-Info "Backup created:"
-    Write-Host $backupPath
+    param(
+        [object]$Config,
+        [string]$SavePath
+    )
+
+    $profile = Choose-Profile -Prompt "Choose a profile to save the current active save into, or Q to cancel"
+    if ($null -eq $profile) {
+        return
+    }
+
+    Backup-Directory -Source $SavePath -Reason "before-manual-profile-backup" | Out-Null
+    Save-ActiveToProfile -SavePath $SavePath -ProfileName $profile.Name
+    $Config.lastActiveProfile = $profile.Name
+    Save-Config $Config
+    Write-Info "Saved current active save into '$($profile.Name)'."
 }
 
 function Choose-Profile {
@@ -668,21 +714,33 @@ function Delete-Profile {
     Write-Info "Moved profile '$($profile.Name)' to the Windows Recycle Bin."
 }
 
-function Restore-FromBackup {
-    param([string]$SavePath)
+function Restore-ProfileVersion {
+    param(
+        [object]$Config,
+        [string]$SavePath
+    )
 
-    $backups = @(Get-ChildItem -LiteralPath $BackupsRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending)
-    if ($backups.Count -eq 0) {
-        Write-Warn "No backups found."
+    $profile = Choose-Profile -Prompt "Choose a profile to restore from, or Q to cancel"
+    if ($null -eq $profile) {
         return
     }
 
-    Write-Host ""
-    Write-Host "Backups:"
-    for ($i = 0; $i -lt $backups.Count; $i++) {
-        Write-Host ("  [{0}] {1}" -f ($i + 1), $backups[$i].Name)
+    $versions = @(Get-ProfileVersionDirectories -ProfilePath $profile.FullName)
+    if ($versions.Count -eq 0) {
+        Write-Warn "That profile has no saved versions."
+        return
     }
-    $choice = Read-Host "Choose a backup number, or Q to cancel"
+
+    Clear-Host
+    Write-Host "Restore profile version"
+    Write-Host ""
+    Write-Host "Profile: $($profile.Name)"
+    Write-Host ""
+    Write-Host "Versions:"
+    for ($i = 0; $i -lt $versions.Count; $i++) {
+        Write-Host ("  [{0}] {1}" -f ($i + 1), $versions[$i].Name)
+    }
+    $choice = Read-Host "Choose a version number, or Q to cancel"
     if ($choice -match "^[Qq]$") {
         return
     }
@@ -693,22 +751,26 @@ function Restore-FromBackup {
     }
 
     $index = $parsedChoice - 1
-    if ($index -lt 0 -or $index -ge $backups.Count) {
+    if ($index -lt 0 -or $index -ge $versions.Count) {
         Write-Warn "Invalid choice."
         return
     }
 
-    $confirm = Read-Host "Restore this backup to the active save folder? This creates a backup first. Type RESTORE to continue"
+    $confirm = Read-Host "Restore this version? This backs up the active save first. Type RESTORE to continue"
     if ($confirm -ne "RESTORE") {
         Write-Info "Restore cancelled."
         return
     }
 
     Backup-Directory -Source $SavePath -Reason "before-restore" | Out-Null
-    Clear-DirectoryContents -Path $SavePath
-    Copy-DirectoryContents -Source $backups[$index].FullName -Destination $SavePath
-    Write-Log "Restored backup '$($backups[$index].FullName)' to '$SavePath'."
-    Write-Info "Backup restored."
+    $selectedSaveFile = Join-Path $versions[$index].FullName $GameplaySaveFileName
+    New-Item -ItemType Directory -Path $SavePath -Force | Out-Null
+    Copy-Item -LiteralPath $selectedSaveFile -Destination (Join-Path $SavePath $GameplaySaveFileName) -Force
+    New-ProfileVersionFromSaveFile -SourceSaveFile $selectedSaveFile -ProfileName $profile.Name | Out-Null
+    $Config.lastActiveProfile = $profile.Name
+    Save-Config $Config
+    Write-Log "Restored profile '$($profile.Name)' version '$($versions[$index].Name)' to active save folder."
+    Write-Info "Restored '$($profile.Name)' version '$($versions[$index].Name)'."
 }
 
 function Start-SelectedProfile {
@@ -757,6 +819,70 @@ function Start-SelectedProfile {
     }
 }
 
+function Start-NewPlaythrough {
+    param(
+        [object]$Config,
+        [string]$SavePath,
+        [string]$GameExe
+    )
+
+    if (Test-GameRunning) {
+        Write-Warn "The game appears to be running. Close it before starting a new playthrough."
+        return
+    }
+
+    $profileName = Read-NewProfileName -Prompt "New playthrough profile name"
+    $activeSaveFile = Join-Path $SavePath $GameplaySaveFileName
+
+    Write-Warn "This starts the game without an existing $GameplaySaveFileName."
+    Write-Warn "The current active save is backed up first."
+    $confirm = Read-Host "Type START to continue"
+    if ($confirm -ne "START") {
+        Write-Info "New playthrough cancelled."
+        return
+    }
+
+    Backup-Directory -Source $SavePath -Reason "before-new-playthrough" | Out-Null
+
+    if (-not [string]::IsNullOrWhiteSpace($Config.lastActiveProfile)) {
+        $lastProfilePath = Join-Path $ProfilesRoot $Config.lastActiveProfile
+        if ((Test-Path -LiteralPath $lastProfilePath) -and (Test-Path -LiteralPath $activeSaveFile)) {
+            Write-Info "Saving current active state to $($Config.lastActiveProfile)..."
+            Save-ActiveToProfile -SavePath $SavePath -ProfileName $Config.lastActiveProfile
+        }
+    }
+
+    New-Item -ItemType Directory -Path (Join-Path $ProfilesRoot $profileName) -Force | Out-Null
+    if (Test-Path -LiteralPath $activeSaveFile) {
+        Remove-Item -LiteralPath $activeSaveFile -Force
+        Write-Log "Removed active $GameplaySaveFileName before starting new playthrough '$profileName'."
+    }
+
+    $Config.lastActiveProfile = $profileName
+    Save-Config $Config
+
+    Write-Info "Launching Librarian for new playthrough..."
+    $process = Start-Process -FilePath $GameExe -PassThru
+    Write-DebugLog "Started game process id '$($process.Id)' for new playthrough."
+    Write-Log "Launched game process '$($process.Id)' for new playthrough '$profileName'."
+
+    if ($Config.waitForGameExit) {
+        Write-Info "Waiting for game to close..."
+        $process.WaitForExit()
+        Write-DebugLog "Game process '$($process.Id)' exited with code '$($process.ExitCode)'."
+        if (Test-Path -LiteralPath $activeSaveFile) {
+            Write-Info "Game closed. Saving new playthrough to $profileName..."
+            Save-ActiveToProfile -SavePath $SavePath -ProfileName $profileName
+            Save-Config $Config
+            Write-Info "Done."
+        } else {
+            Write-Warn "Game closed, but no $GameplaySaveFileName was found."
+            Write-Warn "Launch the game and create a save before using this profile."
+            Write-Log "No $GameplaySaveFileName found after new playthrough '$profileName' exited."
+        }
+    }
+}
+
 function Show-Menu {
     param(
         [object]$Config,
@@ -767,7 +893,7 @@ function Show-Menu {
     while ($true) {
         $profiles = Get-Profiles
         Clear-Host
-        Write-Host "LibraryGame Launcher"
+        Write-Host "Librarian Save Swapper"
         Write-Host ""
         Write-Host "Active profile: $($Config.lastActiveProfile)"
         Write-Host ""
@@ -782,10 +908,11 @@ function Show-Menu {
         Write-Host ""
         Write-Host "Actions:"
         Write-Host "  [N] New profile from current save"
+        Write-Host "  [S] Start new playthrough"
         Write-Host "  [E] Rename profile"
         Write-Host "  [D] Delete profile"
-        Write-Host "  [B] Backup current save"
-        Write-Host "  [R] Restore from backup"
+        Write-Host "  [B] Save current save to profile"
+        Write-Host "  [R] Restore profile version"
         Write-Host "  [Q] Quit"
         Write-Host ""
 
@@ -793,10 +920,11 @@ function Show-Menu {
         switch -Regex ($choice) {
             "^[Qq]$" { return }
             "^[Nn]$" { New-ProfileFromCurrentSave -Config $Config -SavePath $SavePath; Pause; continue }
+            "^[Ss]$" { Start-NewPlaythrough -Config $Config -SavePath $SavePath -GameExe $GameExe; Pause; continue }
             "^[Ee]$" { Rename-Profile -Config $Config; Pause; continue }
             "^[Dd]$" { Delete-Profile -Config $Config; Pause; continue }
-            "^[Bb]$" { Backup-CurrentSave -SavePath $SavePath; Pause; continue }
-            "^[Rr]$" { Restore-FromBackup -SavePath $SavePath; Pause; continue }
+            "^[Bb]$" { Backup-CurrentSave -Config $Config -SavePath $SavePath; Pause; continue }
+            "^[Rr]$" { Restore-ProfileVersion -Config $Config -SavePath $SavePath; Pause; continue }
             "^\d+$" {
                 $index = [int]$choice - 1
                 if ($index -ge 0 -and $index -lt $profiles.Count) {

@@ -35,6 +35,13 @@ A packaged release is not available yet. Use the PowerShell install command abov
 
 The first run will create launcher folders and ask what to do if it finds existing active saves but no managed profile yet.
 
+Main actions:
+
+- `N` creates a new profile from the current active save.
+- `S` starts a brand-new playthrough by backing up the current save, removing only active `Sav.sav`, launching the game, and saving the new `Sav.sav` into a new profile after the game exits.
+- `B` saves the current active `Sav.sav` into a profile as a new timestamped version.
+- `R` restores one of a selected profile's timestamped versions.
+
 For troubleshooting, run:
 
 ```text
